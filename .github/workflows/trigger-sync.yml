@@ -1,0 +1,20 @@
+name: Trigger Final Repo Sync
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  trigger-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Final Repository Workflow
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          curl -f -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${PAT_TOKEN}" \
+            https://api.github.com/repos/newalgeria/api-dz-backend/dispatches \
+            -d '{"event_type":"source-repo-push"}'
