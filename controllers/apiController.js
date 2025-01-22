@@ -37,6 +37,39 @@ exports.getDetails = async (req, res) => {
 
 exports.getRandomItems = async (req, res) => {
   const slug = req.params.slug;
+  const count = req.params.count ? parseInt(req.params.count) : 3;
+  const baseUrl = process.env.CLOUD_STORAGE_URL;
+
+  // Validate count parameter if provided
+  if (isNaN(count) || count < 1) {
+    return res.status(400).json({ error: "Count must be a positive number" });
+  }
+
+  try {
+    const dataDescriptionUrl = `${baseUrl}/datas_description.json`;
+    const dataDescriptions = await fetchData(dataDescriptionUrl);
+    const item = dataDescriptions.find((desc) => desc.slug === slug);
+
+    if (!item) {
+      return res.status(404).json({ error: "Data not found" });
+    }
+
+    const unescapedPath = item.path.replace(/\//g, "/");
+    const dataUrl = `${baseUrl}${unescapedPath}`;
+    const data = await fetchData(dataUrl);
+
+    // Ensure count doesn't exceed array length
+    const itemCount = Math.min(count, data.length);
+    const randomItems = data.sort(() => 0.5 - Math.random()).slice(0, itemCount);
+    res.json(randomItems);
+  } catch (error) {
+    console.error("Error fetching data:", error.message);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+exports.getSampleItems = async (req, res) => {
+  const slug = req.params.slug;
   const baseUrl = process.env.CLOUD_STORAGE_URL;
 
   try {
@@ -52,9 +85,9 @@ exports.getRandomItems = async (req, res) => {
     const dataUrl = `${baseUrl}${unescapedPath}`;
     const data = await fetchData(dataUrl);
 
-    // Shuffle and select 3 random items
-    const randomItems = data.sort(() => 0.5 - Math.random()).slice(0, 3);
-    res.json(randomItems);
+    // Get first 3 items
+    const sampleItems = data.slice(0, 3);
+    res.json(sampleItems);
   } catch (error) {
     console.error("Error fetching data:", error.message);
     res.status(500).json({ error: "Server error" });
