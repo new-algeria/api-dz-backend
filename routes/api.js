@@ -4,7 +4,8 @@ const apiController = require("../controllers/apiController.js");
 const cors = require('cors');
 const { fetchUri } = require("../utils/fetchData");
 
-const customOrigins = ['https://data-dz.com', 'https://www.data-dz.com', process.env.ADMINS_IP];
+// const customOrigins = ['https://data-dz.com', 'https://www.data-dz.com'];
+const customOrigins = '*';
 const corsOptions = { origin: customOrigins };
 
 // Root route handler
