@@ -14,19 +14,11 @@ async function convertToJson(data, fileType) {
     
     case 'xml':
       const parser = new xml2js.Parser({ explicitArray: false, mergeAttrs: true });
-      const result = await parser.parseStringPromise(data);
-      return result;
+      return parser.parseStringPromise(data);
     
     case 'geojson':
-      const geoData = typeof data === 'string' ? JSON.parse(data) : data;
-      if (geoData.type === 'FeatureCollection') {
-        return geoData; // Return complete FeatureCollection
-      }
-      throw new Error('Invalid GeoJSON format');
-    
     case 'json':
       return typeof data === 'string' ? JSON.parse(data) : data;
-    
     default:
       throw new Error(`Unsupported file type: ${fileType}`);
   }

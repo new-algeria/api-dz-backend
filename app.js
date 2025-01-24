@@ -1,3 +1,4 @@
+require('dotenv').config({ path: '.env.local' });  // Specify the correct .env file
 const express = require('express');
 const cors = require('cors');
 const apiRoutes = require('./routes/api');

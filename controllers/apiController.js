@@ -1,4 +1,4 @@
-const fetchData = require("../utils/fetchData");
+const { fetchUri, fetchData } = require("../utils/fetchData");
 
 exports.getDetails = async (req, res) => {
   const slug = req.params.slug;
@@ -9,7 +9,7 @@ exports.getDetails = async (req, res) => {
     const dataDescriptionUrl = `${baseUrl}/datas_description.json`;
 
     // Fetch the datas_description.json file
-    const dataDescriptions = await fetchData(dataDescriptionUrl);
+    const dataDescriptions = await fetchUri(dataDescriptionUrl);
 
     // Find the item with the matching slug
     const item = dataDescriptions.find((desc) => desc.slug === slug);
@@ -47,7 +47,7 @@ exports.getRandomItems = async (req, res) => {
 
   try {
     const dataDescriptionUrl = `${baseUrl}/datas_description.json`;
-    const dataDescriptions = await fetchData(dataDescriptionUrl);
+    const dataDescriptions = await fetchUri(dataDescriptionUrl);
     const item = dataDescriptions.find((desc) => desc.slug === slug);
 
     if (!item) {
@@ -86,7 +86,7 @@ exports.getSampleItems = async (req, res) => {
 
   try {
     const dataDescriptionUrl = `${baseUrl}/datas_description.json`;
-    const dataDescriptions = await fetchData(dataDescriptionUrl);
+    const dataDescriptions = await fetchUri(dataDescriptionUrl);
     const item = dataDescriptions.find((desc) => desc.slug === slug);
 
     if (!item) {
