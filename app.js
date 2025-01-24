@@ -7,7 +7,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Enable CORS
-const allowedOrigins = ['https://example.com'];
+const allowedOrigins = ['https://data-dz.com', 'https://www.data-dz.com'];
 
 app.use(cors({
   origin: function (origin, callback) {
