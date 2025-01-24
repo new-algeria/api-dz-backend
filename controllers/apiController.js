@@ -58,10 +58,22 @@ exports.getRandomItems = async (req, res) => {
     const dataUrl = `${baseUrl}${unescapedPath}`;
     const data = await fetchData(dataUrl);
 
-    // Ensure count doesn't exceed array length
-    const itemCount = Math.min(count, data.length);
-    const randomItems = data.sort(() => 0.5 - Math.random()).slice(0, itemCount);
-    res.json(randomItems);
+    // Handle GeoJSON FeatureCollection
+    if (data.type === 'FeatureCollection') {
+      const features = data.features;
+      const itemCount = Math.min(count, features.length);
+      const randomFeatures = features.sort(() => 0.5 - Math.random()).slice(0, itemCount);
+      
+      res.json({
+        type: 'FeatureCollection',
+        features: randomFeatures
+      });
+    } else {
+      // Handle regular JSON arrays
+      const itemCount = Math.min(count, data.length);
+      const randomItems = data.sort(() => 0.5 - Math.random()).slice(0, itemCount);
+      res.json(randomItems);
+    }
   } catch (error) {
     console.error("Error fetching data:", error.message);
     res.status(500).json({ error: "Server error" });
@@ -85,9 +97,18 @@ exports.getSampleItems = async (req, res) => {
     const dataUrl = `${baseUrl}${unescapedPath}`;
     const data = await fetchData(dataUrl);
 
-    // Get first 3 items
-    const sampleItems = data.slice(0, 3);
-    res.json(sampleItems);
+    // Handle GeoJSON FeatureCollection
+    if (data.type === 'FeatureCollection') {
+      const sampleFeatures = data.features.slice(0, 3);
+      res.json({
+        type: 'FeatureCollection',
+        features: sampleFeatures
+      });
+    } else {
+      // Handle regular JSON arrays
+      const sampleItems = data.slice(0, 3);
+      res.json(sampleItems);
+    }
   } catch (error) {
     console.error("Error fetching data:", error.message);
     res.status(500).json({ error: "Server error" });
