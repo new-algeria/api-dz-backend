@@ -15,8 +15,8 @@ async function fetchData(url) {
     const fileType = url.split(".").pop().toLowerCase();
 
     let response;
-    if (['csv', 'xlsx', 'xml'].includes(fileType)) {
-      response = await axios.get(url, { responseType: 'arraybuffer' });
+    if (["csv", "xlsx", "xml"].includes(fileType)) {
+      response = await axios.get(url, { responseType: "arraybuffer" });
     } else {
       response = await axios.get(url); // JSON or GEOJSON
     }
@@ -29,7 +29,21 @@ async function fetchData(url) {
   }
 }
 
+async function fetchMetadata(url) {
+  try {
+    const response = await axios.head(url);
+    return {
+      "last-modified": response.headers["last-modified"],
+      "content-type": response.headers["content-type"],
+      "content-length": response.headers["content-length"],
+    };
+  } catch (error) {
+    throw new Error(`Failed to fetch metadata of ${url}: ${error.message}`);
+  }
+}
+
 module.exports = {
   fetchUri,
-  fetchData
+  fetchData,
+  fetchMetadata,
 };

@@ -1,4 +1,4 @@
-const { fetchUri, fetchData } = require("../utils/fetchData");
+const { fetchUri, fetchData, fetchMetadata } = require("../utils/fetchData");
 
 exports.getDetails = async (req, res) => {
   const slug = req.params.slug;
@@ -24,11 +24,31 @@ exports.getDetails = async (req, res) => {
     // Construct the URL to the JSON data file
     const dataUrl = `${baseUrl}${unescapedPath}`;
 
-    // Fetch the JSON data file
-    const data = await fetchData(dataUrl);
+    // Fetch all required data in parallel
+    const [data, metadata] = await Promise.all([
+      fetchData(dataUrl),
+      fetchMetadata(dataUrl)
+    ]);
 
-    // Return the data
-    res.json(data);
+    // Generate preview using the same logic as getSampleItems
+    let preview;
+    if (data.type === 'FeatureCollection') {
+      preview = {
+        type: 'FeatureCollection',
+        features: data.features.slice(0, 3)
+      };
+    } else {
+      preview = Array.isArray(data) ? data.slice(0, 3) : data;
+    }
+
+    // Return structured response
+    res.json({
+      'last-edited': new Date(metadata["last-modified"]),
+      'length': data.length,
+      preview,
+      data
+    });
+
   } catch (error) {
     console.error("Error fetching data:", error.message);
     res.status(500).json({ error: "Server error" });
