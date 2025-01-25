@@ -4,8 +4,8 @@ const apiController = require("../controllers/apiController.js");
 const cors = require('cors');
 const { fetchUri } = require("../utils/fetchData");
 
-// const customOrigins = ['https://data-dz.com', 'https://www.data-dz.com'];
-// const corsOptions = { origin: customOrigins };
+const customOrigins = ['https://data-dz.com', 'https://www.data-dz.com'];
+const corsOptions = { origin: customOrigins };
 
 // Root route handler
 router.get("/info", async (req, res) => {

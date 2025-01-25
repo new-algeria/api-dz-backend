@@ -9,7 +9,12 @@ const PORT = process.env.PORT || 3000;
 // Enable CORS
 const allowedOrigins = ['https://data-dz.com', 'https://www.data-dz.com'];
 
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET'],
+  credentials: true,
+  optionsSuccessStatus: 200
+}));
 // app.use(cors({
 //   origin: function (origin, callback) {
 //     if (!origin || allowedOrigins.includes(origin)) {
