@@ -5,8 +5,7 @@ const cors = require('cors');
 const { fetchUri } = require("../utils/fetchData");
 
 // const customOrigins = ['https://data-dz.com', 'https://www.data-dz.com'];
-const customOrigins = '*';
-const corsOptions = { origin: customOrigins };
+// const corsOptions = { origin: customOrigins };
 
 // Root route handler
 router.get("/info", async (req, res) => {
