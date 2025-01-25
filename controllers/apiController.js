@@ -169,10 +169,8 @@ exports.downloadFile = async (req, res) => {
       return response.data.pipe(res);
     }
 
-    // Convert to json before converting to requested format
-    const jsonData = await convertToJson(data, sourceFormat);
-    console.log(jsonData.isArray ? jsonData[0] : jsonData);
-    const converted = await convertFromJson(jsonData, format);
+    // Convert to requested format
+    const converted = await convertFromJson(data, format);
     
     // Set appropriate headers
     const contentTypes = {
