@@ -1,5 +1,5 @@
 const { fetchUri, fetchData, fetchMetadata } = require("../utils/fetchData");
-const { convertFromJson, convertToJson } = require("../utils/converter");
+const { convertFromJson } = require("../utils/converter");
 const axios = require('axios');
 
 exports.getDetails = async (req, res) => {
@@ -25,7 +25,6 @@ exports.getDetails = async (req, res) => {
 
     if (item.path) {
       // Handle file from storage
-      sourceType = 'file';
       const unescapedPath = item.path.replace(/\//g, "/");
       const dataUrl = `${baseUrl}${unescapedPath}`;
       [data, metadata] = await Promise.all([
@@ -34,7 +33,6 @@ exports.getDetails = async (req, res) => {
       ]);
     } else if (item.link) {
       // Handle API endpoint
-      sourceType = 'api';
       data = await fetchUri(item.link);
       metadata = {
         "last-modified": new Date().toUTCString(), // Current time as API data is real-time
@@ -60,9 +58,8 @@ exports.getDetails = async (req, res) => {
       'type': sourceType,
       'last-edited': new Date(metadata["last-modified"]),
       'length': data.length,
-      data,
       preview,
-      ...(sourceType === 'file' && item )
+      ...item
     });
   } catch (error) {
   console.error("Error fetching data:", error.message);
