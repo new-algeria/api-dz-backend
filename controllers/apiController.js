@@ -20,19 +20,31 @@ exports.getDetails = async (req, res) => {
       return res.status(404).json({ error: "Data not found" });
     }
 
-    // Unescape the item.path
-    const unescapedPath = item.path.replace(/\//g, "/");
+    // Define variables for data and metadata
+    let data, metadata, sourceType;
 
-    // Construct the URL to the JSON data file
-    const dataUrl = `${baseUrl}${unescapedPath}`;
+    if (item.path) {
+      // Handle file from storage
+      sourceType = 'file';
+      const unescapedPath = item.path.replace(/\//g, "/");
+      const dataUrl = `${baseUrl}${unescapedPath}`;
+      [data, metadata] = await Promise.all([
+        fetchData(dataUrl),
+        fetchMetadata(dataUrl)
+      ]);
+    } else if (item.link) {
+      // Handle API endpoint
+      sourceType = 'api';
+      data = await fetchUri(item.link);
+      metadata = {
+        "last-modified": new Date().toUTCString(), // Current time as API data is real-time
+        "content-type": "application/json",
+      };
+    } else {
+      return res.status(400).json({ error: "Invalid data source configuration" });
+    }
 
-    // Fetch all required data in parallel
-    const [data, metadata] = await Promise.all([
-      fetchData(dataUrl),
-      fetchMetadata(dataUrl)
-    ]);
-
-    // Generate preview using the same logic as getSampleItems
+    // Generate preview
     let preview;
     if (data.type === 'FeatureCollection') {
       preview = {
@@ -43,17 +55,18 @@ exports.getDetails = async (req, res) => {
       preview = Array.isArray(data) ? data.slice(0, 3) : data;
     }
 
-    // Return structured response
+    // Return structured response with source type
     res.json({
+      'type': sourceType,
       'last-edited': new Date(metadata["last-modified"]),
       'length': data.length,
+      data,
       preview,
-      data
+      ...(sourceType === 'file' && item )
     });
-
   } catch (error) {
-    console.error("Error fetching data:", error.message);
-    res.status(500).json({ error: "Server error" });
+  console.error("Error fetching data:", error.message);
+  res.status(500).json({ error: "Server error" });
   }
 };
 
