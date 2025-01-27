@@ -10,7 +10,8 @@ const PORT = process.env.PORT || 3000;
 
 // Enable CORS
 const allowedOrigins = ['https://data-dz.com', 
-            'https://www.data-dz.com'
+            'https://www.data-dz.com',
+            'https://api.data-dz.com'
             ];
 
 // Add localhost regex pattern
