@@ -2,7 +2,7 @@ require('dotenv').config({ path: '.env.local' });  // Specify the correct .env f
 const express = require('express');
 const cors = require('cors');
 const apiRoutes = require('./routes/api');
-const authController = require("./Controllers/authController");
+const authController = require("./controllers/authController");
 const verifyToken = require("./middleware/auth");
 
 const app = express();
