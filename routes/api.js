@@ -20,6 +20,8 @@ router.get("/details/:slug", cors(corsOptions), apiController.getDetails);
 router.get('/random/:slug', cors(corsOptions), apiController.getRandomItems);
 router.get('/random/:count/:slug', cors(corsOptions), apiController.getRandomItems);
 router.get('/sample/:slug', cors(corsOptions), apiController.getSampleItems);
-router.get("/download/:slug/:format",cors(corsOptions),apiController.downloadFile);
+router.get("/download/:slug/:format/:token", cors(corsOptions), apiController.downloadFile);
+router.get("/purchase/:slug/:format", cors(corsOptions), apiController.generateDownloadLink);
+router.post('/notify', cors(corsOptions), apiController.sendNotification);
 
 module.exports = router;
