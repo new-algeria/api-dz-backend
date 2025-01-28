@@ -3,14 +3,13 @@ const express = require('express');
 const cors = require('cors');
 const apiRoutes = require('./routes/api');
 const authController = require("./controllers/authController");
-const verifyToken = require("./middleware/auth");
+const excludePath = require('./middleware/excludePath');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Enable CORS
-const allowedOrigins = ['https://data-dz.com', 
-            'https://www.data-dz.com',
+const allowedOrigins = ['https://www.data-dz.com',
             'https://api.data-dz.com'
             ];
 
@@ -31,13 +30,14 @@ app.use(cors({
 }));
 
 app.use(express.urlencoded({ extended: true }));
+app.use(express.json()); // Add this line to parse JSON bodies
 
 // Auth routes at root level
 app.get("/login", authController.loginForm);
 app.post("/login", authController.login);
 
-// Protect all /api routes with JWT
-app.use("/api", verifyToken, apiRoutes);
+// Protect all /api routes with JWT except specific paths
+app.use("/api", excludePath(allowedOrigins), apiRoutes);
 
 // Start the server
 app.listen(PORT, () => {

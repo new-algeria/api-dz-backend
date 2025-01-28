@@ -1,6 +1,8 @@
 const { fetchUri, fetchData, fetchMetadata } = require("../utils/fetchData");
 const { convertFromJson } = require("../utils/converter");
 const axios = require('axios');
+const { sendEmail } = require('../utils/mailer');
+const { generateDownloadToken, verifyDownloadToken } = require('../utils/downloadToken');
 
 exports.getDetails = async (req, res) => {
   const slug = req.params.slug;
@@ -45,12 +47,14 @@ exports.getDetails = async (req, res) => {
     // Generate preview
     let preview;
     if (data.type === 'FeatureCollection') {
+      const startIndex = Math.max(0, data.features.length - 3);
       preview = {
         type: 'FeatureCollection',
-        features: data.features.slice(0, 3)
+        features: data.features.slice(startIndex)
       };
     } else {
-      preview = Array.isArray(data) ? data.slice(0, 3) : data;
+      const startIndex = Array.isArray(data) ? Math.max(0, data.length - 3) : 0;
+      preview = Array.isArray(data) ? data.slice(startIndex) : data;
     }
 
     // Return structured response with source type
@@ -148,7 +152,13 @@ exports.getSampleItems = async (req, res) => {
 };
 
 exports.downloadFile = async (req, res) => {
-  const { slug, format } = req.params;
+  const { slug, format, token } = req.params;
+
+  // Verify download token
+  if (!token || !verifyDownloadToken(token, slug, format)) {
+    return res.status(403).json({ error: "Invalid or expired download token" });
+  }
+
   const baseUrl = process.env.CLOUD_STORAGE_URL;
 
   // Validate format
@@ -198,5 +208,54 @@ exports.downloadFile = async (req, res) => {
   } catch (error) {
     console.error("Error processing download:", error.message);
     res.status(500).json({ error: "Server error" });
+  }
+};
+
+// Add new endpoint for sending emails
+exports.sendNotification = async (req, res) => {
+  try {
+    console.log('Received notification request:', req.body); // Add debug log
+    const { to, subject, content } = req.body;
+    
+    if (!to || !subject || !content) {
+      console.log('Missing fields:', { to, subject, content }); // Add debug log
+      return res.status(400).json({ 
+        error: "Missing required fields",
+        received: { to, subject, content } 
+      });
+    }
+
+    const result = await sendEmail({
+      to,
+      subject,
+      content
+    });
+
+    res.json({ message: "Email sent successfully", requestId: result.requestId });
+  } catch (error) {
+    console.error("Error in sendNotification:", error);
+    res.status(500).json({ error: "Failed to send email" });
+  }
+};
+
+exports.generateDownloadLink = async (req, res) => {
+  const { slug, format } = req.params;
+  
+  // Validate format
+  const allowedFormats = ['csv', 'xlsx', 'json', 'geojson', 'xml'];
+  if (!allowedFormats.includes(format)) {
+    return res.status(400).json({ error: "Unsupported format" });
+  }
+
+  try {
+    const token = generateDownloadToken(slug, format);
+    const downloadUrl = `${req.protocol}://${req.get('host')}/api/download/${slug}/${format}/${token}`;
+    
+    res.json({
+      downloadUrl
+    });
+  } catch (error) {
+    console.error("Error generating download link:", error);
+    res.status(500).json({ error: "Failed to generate download link" });
   }
 };
