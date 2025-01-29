@@ -5,9 +5,7 @@ const excludePath = (pathOrPaths) => {
   const paths = Array.isArray(pathOrPaths) ? pathOrPaths : [pathOrPaths];
 
   return (req, res, next) => {
-    console.log(">>> before Excluding path : " + `${req.protocol}://${req.hostname}`);
-    if (paths.includes(`${req.protocol}://${req.hostname}`)) {
-      console.log("Excluding path : " + `${req.protocol}://${req.hostname}`);
+    if (paths.includes(`${req.protocol}://${req.get('host')}`)) {
       next(); // Bypass JWT verification for these paths
     } else {
       verifyToken(req, res, next); // Otherwise, use JWT verification
