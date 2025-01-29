@@ -2,6 +2,7 @@ const { fetchUri, fetchData } = require("./fetchData");
 const { convertFromJson } = require("./converter");
 const { generateDownloadToken, verifyDownloadToken } = require('./downloadToken');
 const axios = require('axios');
+const { createTokenMapping } = require('./tokenMapper');
 
 async function handleDownload(req, res) {
     const { slug, format, token } = req.params;
@@ -80,8 +81,9 @@ async function generateLink(req, res) {
   }
 
   try {
-    const token = generateDownloadToken(slug, format);
-    const downloadUrl = `${req.protocol}://${req.get('host')}/api/download/${slug}/${format}/${token}`;
+    const downloadToken = generateDownloadToken(slug, format);
+    const shortToken = createTokenMapping(slug, format, downloadToken);
+    const downloadUrl = `${req.protocol}://${req.get('host')}/${shortToken}`;
     
     res.json({ downloadUrl });
   } catch (error) {
@@ -91,6 +93,6 @@ async function generateLink(req, res) {
 }
 
 module.exports = {
-  handleDownload,
-  generateLink
+    handleDownload,
+    generateLink
 };

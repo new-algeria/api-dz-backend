@@ -4,6 +4,9 @@ const cors = require('cors');
 const apiRoutes = require('./routes/api');
 const authController = require("./controllers/authController");
 const excludePath = require('./middleware/excludePath');
+const { getTokenMapping } = require('./utils/tokenMapper');
+const { handleDownload } = require('./utils/downloadHandler');
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -35,6 +38,26 @@ app.use(express.json()); // Add this line to parse JSON bodies
 // Auth routes at root level
 app.get("/login", authController.loginForm);
 app.post("/login", authController.login);
+
+// Short URL handler (before API routes)
+app.get('/:token([a-f0-9]{12})', async (req, res) => {
+  try {
+    const mapping = getTokenMapping(req.params.token);
+    if (!mapping) {
+      return res.status(404).json({ error: "Download link not found or expired" });
+    }
+    
+    // Destructure mapping and assign to req.params
+    const { slug, format, downloadToken } = mapping;
+    Object.assign(req.params, { slug, format, token: downloadToken });
+    
+    // Handle download directly
+    await handleDownload(req, res);
+  } catch (error) {
+    console.error('Download error:', error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 // Protect all /api routes with JWT except specific paths
 app.use("/api", excludePath(allowedOrigins), apiRoutes);
