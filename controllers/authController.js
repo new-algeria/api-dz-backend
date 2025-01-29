@@ -38,6 +38,7 @@ exports.loginForm = (req, res) => {
       </head>
       <body>
         <form method="POST" action="/login">
+          <input type="hidden" name="_csrf" value="${req.csrfToken()}">
           <input type="password" name="password" placeholder="Enter password" required>
           <button type="submit">Login</button>
         </form>

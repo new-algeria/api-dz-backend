@@ -6,7 +6,8 @@ const authController = require("./controllers/authController");
 const excludePath = require('./middleware/excludePath');
 const { getTokenMapping } = require('./utils/tokenMapper');
 const { handleDownload } = require('./utils/downloadHandler');
-
+const cookieParser = require('cookie-parser'); // Add this package: npm install cookie-parser
+const { csrfProtection, handleCSRFError } = require('./middleware/csrf');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -36,10 +37,11 @@ app.use(cors({
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json()); // Add this line to parse JSON bodies
+app.use(cookieParser());
 
-// Auth routes at root level
-app.get("/login", authController.loginForm);
-app.post("/login", authController.login);
+// Auth routes at root level with CSRF protection
+app.get("/login", csrfProtection, authController.loginForm);
+app.post("/login", csrfProtection, authController.login);
 
 // Short URL handler (before API routes)
 app.get('/:token([a-f0-9]{12})', async (req, res) => {
@@ -63,6 +65,9 @@ app.get('/:token([a-f0-9]{12})', async (req, res) => {
 
 // Protect all /api routes with JWT except specific paths
 app.use("/api", excludePath(allowedOrigins), apiRoutes);
+
+// CSRF error handler
+app.use(handleCSRFError);
 
 // Start the server
 app.listen(PORT, () => {
