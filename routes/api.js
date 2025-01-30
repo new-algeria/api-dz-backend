@@ -16,12 +16,14 @@ router.get("/info", async (req, res) => {
       res.status(500).json({ error: "Failed to fetch data descriptions" });
     }
   });
-router.get("/details/:slug", cors(corsOptions), apiController.getDetails);
-router.get('/random/:slug', cors(corsOptions), apiController.getRandomItems);
-router.get('/random/:count/:slug', cors(corsOptions), apiController.getRandomItems);
-router.get('/sample/:slug', cors(corsOptions), apiController.getSampleItems);
-router.get("/download/:slug/:format/:token", cors(corsOptions), apiController.downloadFile);
-router.get("/purchase/:slug/:format", cors(corsOptions), apiController.generateDownloadLink);
-router.post('/notify', cors(corsOptions), apiController.sendNotification);
+
+router.get("/details/:slug", apiController.getDetails);
+// Protected routes - require JWT
+router.get('/random/:slug', apiController.getRandomItems);
+router.get('/random/:count/:slug', apiController.getRandomItems);
+router.get('/sample/:slug', apiController.getSampleItems);
+router.get("/download/:slug/:format/:token", apiController.downloadFile);
+router.get("/purchase/:slug/:format", apiController.generateDownloadLink);
+router.post('/notify', apiController.sendNotification);
 
 module.exports = router;

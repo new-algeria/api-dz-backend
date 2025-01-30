@@ -1,9 +1,11 @@
 const verifyToken = require('./auth');
 
-const excludePath = (whitelistedOrigins) => {
+const excludePath = (whitelistedOrigins, excludedPaths) => {
   const origins = Array.isArray(whitelistedOrigins) ? whitelistedOrigins : [whitelistedOrigins];
+  const paths = Array.isArray(excludedPaths) ? excludedPaths : [excludedPaths];
   
   console.log(`[DEBUG] Whitelist initialized with origins: ${origins.join(', ')}`);
+  console.log(`[DEBUG] Excluded paths: ${paths.join(', ')}`);
 
   return (req, res, next) => {
     console.log('\n=== NEW REQUEST ===');
@@ -42,22 +44,32 @@ const excludePath = (whitelistedOrigins) => {
     
     console.log(`[DEBUG] Localhost check: ${isLocalhost ? 'MATCH' : 'NO MATCH'}`);
 
-    // Whitelist verification logic
-    let isWhitelisted = false;
-    if (refererOrigin) {
-      isWhitelisted = origins.includes(refererOrigin) || isLocalhost;
-      console.log(`[DEBUG] Whitelist check:
-        - Exact match: ${origins.includes(refererOrigin)}
-        - Localhost match: ${isLocalhost}
-        - Final whitelist status: ${isWhitelisted ? 'APPROVED' : 'REJECTED'}`);
-    } else {
-      console.log('[DEBUG] No Referer origin - skipping whitelist check');
-    }
+    // Check if path is in excluded list
+    const isExcludedPath = paths.some(path => {
+      const pathPattern = new RegExp('^/' + path + '(/[^/]+)?$');
+      return pathPattern.test(req.path);
+    });
 
-    if (isWhitelisted) {
-      console.log(`[ACCESS] Allowing request from whitelisted origin: ${refererOrigin}`);
-      console.log(`[DEBUG] Bypassing auth for ${req.method} ${req.originalUrl}`);
-      return next();
+    // If path is excluded, only check origin
+    if (isExcludedPath) {
+      console.log('[DEBUG] Path is excluded, checking origin only');
+      // Whitelist verification logic
+      let isWhitelisted = false;
+      if (refererOrigin) {
+        isWhitelisted = origins.includes(refererOrigin) || isLocalhost;
+        console.log(`[DEBUG] Whitelist check:
+          - Exact match: ${origins.includes(refererOrigin)}
+          - Localhost match: ${isLocalhost}
+          - Final whitelist status: ${isWhitelisted ? 'APPROVED' : 'REJECTED'}`);
+      } else {
+        console.log('[DEBUG] No Referer origin - skipping whitelist check');
+      }
+
+      if (isWhitelisted) {
+        console.log(`[ACCESS] Allowing request from whitelisted origin: ${refererOrigin}`);
+        console.log(`[DEBUG] Bypassing auth for ${req.method} ${req.originalUrl}`);
+        return next();
+      }
     }
 
     console.log('[AUTH] Origin not whitelisted or missing Referer - requiring authentication');

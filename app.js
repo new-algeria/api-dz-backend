@@ -22,6 +22,7 @@ const allowedOrigins = ['https://www.data-dz.com',
 // Add localhost regex pattern
 const localhostRegex = /^http:\/\/localhost(:[0-9]+)?$/;
   
+// Global CORS settings
 app.use(cors({
   origin: function (origin, callback) {
   if (!origin || allowedOrigins.includes(origin) || localhostRegex.test(origin)) {
@@ -63,8 +64,8 @@ app.get('/:token([a-f0-9]{12})', async (req, res) => {
   }
 });
 
-// Protect all /api routes with JWT except specific paths
-app.use("/api", excludePath(allowedOrigins), apiRoutes);
+// Protect all /api routes with JWT except /api/details
+app.use("/api", excludePath(allowedOrigins, ['details', 'info']), apiRoutes);
 
 // CSRF error handler
 app.use(handleCSRFError);
