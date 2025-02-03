@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import time
 import paramiko
@@ -17,15 +18,43 @@ class SFTPManager:
         self.port = parsed.port or 22
         self.user = parsed.username
         self.pwd = parsed.password
-        self.base_path = Path(parsed.path)
+        # self.base_path = Path(parsed.path)
+        # self.base_path = str(parsed.path.lstrip('/'))
+        self.base_path = parsed.path.lstrip('/')
         
         self.transport = paramiko.Transport((self.host, self.port))
         self.transport.connect(username=self.user, password=self.pwd)
         self.sftp = paramiko.SFTPClient.from_transport(self.transport)
 
+        #############################################################################
+         # Change to target directory
+        try:
+            self.sftp.chdir(self.base_path)
+        except FileNotFoundError:
+            raise Exception(f"Remote directory '{self.base_path}' not found")
+        #############################################################################
+
     def get_json(self, filename):
         """Secure JSON file download with validation"""
-        local_path = Path(filename).name
+        ################################################################################
+        try:
+            local_path = str(Path(filename).name)
+            remote_path = os.path.join(self.base_path, filename)
+            
+            self.sftp.get(remote_path, local_path)
+            
+            with open(local_path, 'r') as f:
+                return json.load(f)
+                
+        except FileNotFoundError:
+            raise Exception(f"Remote file '{filename}' not found in {self.base_path}")
+        except json.JSONDecodeError as e:
+            raise Exception(f"Invalid JSON in file {filename}: {str(e)}")
+        except Exception as e:
+            self.sftp.close()
+            self.transport.close()
+            raise Exception(f"SFTP error: {str(e)}")
+        ##################################################################################
         try:
             self.sftp.get(str(self.base_path / filename), local_path)
             with open(local_path, 'r') as f:
@@ -61,6 +90,13 @@ class SFTPManager:
 def process_object(driver, obj, token):
     """Enhanced with explicit waits and error recovery"""
     try:
+        # with SFTPManager(args.sftp_uri) as sftp:
+        #     # Download data file
+        #     current_file = sftp.get_file('datas_description.json')
+            
+        #     # Load data
+        #     with open(current_file) as f:
+        #         current_data = json.load(f)
         driver.get('https://rapidapi.com/studio/api_22dd3f3e-f11a-494c-a080-228eb6f67e8c/client/4b16491c-11b6-468c-b841-03c78261b8cd')
         driver.add_cookie({'name': 'token','value': token,'domain': urlparse(driver.current_url).hostname})
         driver.add_cookie({'name': 'jwt_auth', 'value': token,'domain': urlparse(driver.current_url).hostname})
@@ -125,6 +161,9 @@ def process_object(driver, obj, token):
         time.sleep(5)  # Wait for sync
         
         return True
+    except Exception as e:
+        print(f"SFTP Error: {str(e)}")
+        sys.exit(1)
     except Exception as e:
         driver.save_screenshot(f"error_{obj.get('slug', 'unknown')}.png")
         raise
