@@ -3,6 +3,7 @@ import os
 import sys
 import time
 import paramiko
+import logging
 from argparse import ArgumentParser
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -18,21 +19,11 @@ class SFTPManager:
         self.port = parsed.port or 22
         self.user = parsed.username
         self.pwd = parsed.password
-        # self.base_path = Path(parsed.path)
-        # self.base_path = str(parsed.path.lstrip('/'))
-        self.base_path = parsed.path.lstrip('/')
-        
+        self.base_path = parsed.path  # Preserve leading slash
+
         self.transport = paramiko.Transport((self.host, self.port))
         self.transport.connect(username=self.user, password=self.pwd)
         self.sftp = paramiko.SFTPClient.from_transport(self.transport)
-
-        #############################################################################
-         # Change to target directory
-        try:
-            self.sftp.chdir(self.base_path)
-        except FileNotFoundError:
-            raise Exception(f"Remote directory '{self.base_path}' not found")
-        #############################################################################
 
     def get_json(self, filename):
         """Secure JSON file download with validation"""
@@ -45,11 +36,6 @@ class SFTPManager:
             
             with open(local_path, 'r') as f:
                 return json.load(f)
-                
-        except FileNotFoundError:
-            raise Exception(f"Remote file '{filename}' not found in {self.base_path}")
-        except json.JSONDecodeError as e:
-            raise Exception(f"Invalid JSON in file {filename}: {str(e)}")
         except Exception as e:
             self.sftp.close()
             self.transport.close()
