@@ -27,22 +27,13 @@ class SFTPManager:
 
     def get_json(self, filename):
         """Secure JSON file download with validation"""
-        ################################################################################
+        # local_path = str(Path(filename).name)
+        # remote_path = os.path.join(self.base_path, filename)
+        local_path = Path(filename).name
+        remote_path = Path(self.base_path) / filename
+
         try:
-            local_path = str(Path(filename).name)
-            remote_path = os.path.join(self.base_path, filename)
-            
-            self.sftp.get(remote_path, local_path)
-            
-            with open(local_path, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            self.sftp.close()
-            self.transport.close()
-            raise Exception(f"SFTP error: {str(e)}")
-        ##################################################################################
-        try:
-            self.sftp.get(str(self.base_path / filename), local_path)
+            self.sftp.get(str(remote_path), str(local_path))
             with open(local_path, 'r') as f:
                 return json.load(f)
         except (FileNotFoundError, json.JSONDecodeError) as e:
@@ -75,40 +66,86 @@ class SFTPManager:
 
 def process_object(driver, obj, token):
     """Enhanced with explicit waits and error recovery"""
-    try:
-        # with SFTPManager(args.sftp_uri) as sftp:
-        #     # Download data file
-        #     current_file = sftp.get_file('datas_description.json')
-            
-        #     # Load data
-        #     with open(current_file) as f:
-        #         current_data = json.load(f)
-        driver.get('https://rapidapi.com/studio/api_22dd3f3e-f11a-494c-a080-228eb6f67e8c/client/4b16491c-11b6-468c-b841-03c78261b8cd')
-        driver.add_cookie({'name': 'token','value': token,'domain': urlparse(driver.current_url).hostname})
-        driver.add_cookie({'name': 'jwt_auth', 'value': token,'domain': urlparse(driver.current_url).hostname})
-        driver.refresh()
+    # try:
+    #     driver.get('https://rapidapi.com/studio/api_22dd3f3e-f11a-494c-a080-228eb6f67e8c/client/4b16491c-11b6-468c-b841-03c78261b8cd')
+    #     driver.add_cookie({'name': 'token','value': token,'domain': urlparse(driver.current_url).hostname})
+    #     driver.add_cookie({'name': 'jwt_auth', 'value': token,'domain': urlparse(driver.current_url).hostname})
+    #     driver.refresh()
 
-        # Add explicit waits for critical elements
-        WebDriverWait(driver, 15).until(
+    #     # Add explicit waits for critical elements
+    #     WebDriverWait(driver, 15).until(
+    #         EC.presence_of_element_located((By.CSS_SELECTOR, 'div.css-vyrhqs.css-1lfcwor'))
+    #     )
+        
+    #     # Click on the div with specific classes
+    #     target_div = WebDriverWait(driver, 10).until(
+    #         EC.presence_of_element_located((By.XPATH, '//div[contains(@class, "css-vyrhqs") and contains(@class, "css-1lfcwor")]'))
+    #     )
+    #     buttons = target_div.find_elements(By.CLASS_NAME, 'css-1tfwfkp')
+    #     if len(buttons) >= 2:
+    #         buttons[1].click()
+        
+    #     time.sleep(4)  # Wait for page load
+        
+    #     # Click on API endpoint div
+    #     endpoint_div = driver.find_element(By.CLASS_NAME, 'elrb9vu0.css-1992qbr')
+    #     endpoint_div.click()
+        
+    #     # Enter API endpoint URL
+    #     endpoint_input = driver.find_element(By.CLASS_NAME, 'css-d4v849')
+    #     endpoint_input.clear()
+    #     endpoint_input.send_keys(f'https://api.dz.com/api/{obj["slug"]}')
+    """Robust element handling with improved error reporting"""
+    try:
+        # Initialize browser with proper configuration
+        driver.set_window_size(1920, 1080)
+        driver.implicitly_wait(10)
+
+        # Navigate to base domain first for cookies
+        base_url = 'https://rapidapi.com'
+        driver.get(base_url)
+        
+        # Add cookies to the correct domain
+        cookie_domain = urlparse(base_url).hostname
+        driver.add_cookie({'name': 'token', 'value': token, 'domain': cookie_domain})
+        driver.add_cookie({'name': 'jwt_auth', 'value': token, 'domain': cookie_domain})
+
+        # Navigate to target URL
+        target_url = 'https://rapidapi.com/studio/api_22dd3f3e-f11a-494c-a080-228eb6f67e8c/client/4b16491c-11b6-468c-b841-03c78261b8cd'
+        driver.get(target_url)
+
+        # Wait for page load using ready state
+        WebDriverWait(driver, 20).until(
+            lambda d: d.execute_script('return document.readyState') == 'complete'
+        )
+
+        # Improved element interaction sequence
+        # -----------------------------------------------------------
+        # 1. Find container with combined class check
+        container = WebDriverWait(driver, 15).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, 'div.css-vyrhqs.css-1lfcwor'))
         )
         
-        # Click on the div with specific classes
-        target_div = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, '//div[contains(@class, "css-vyrhqs") and contains(@class, "css-1lfcwor")]'))
-        )
-        buttons = target_div.find_elements(By.CLASS_NAME, 'css-1tfwfkp')
+        # 2. Click second button using XPath index
+        buttons = container.find_elements(By.XPATH, './/button[contains(@class, "css-1tfwfkp")]')
         if len(buttons) >= 2:
-            buttons[1].click()
+            WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable(buttons[1])
+            ).click()
         
-        time.sleep(4)  # Wait for page load
+        # 3. Wait for animation/load
+        time.sleep(2)  # Consider replacing with explicit wait if possible
         
-        # Click on API endpoint div
-        endpoint_div = driver.find_element(By.CLASS_NAME, 'elrb9vu0.css-1992qbr')
-        endpoint_div.click()
+        # 4. API endpoint interaction
+        endpoint_section = WebDriverWait(driver, 10).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, 'div.elrb9vu0.css-1992qbr'))
+        )
+        endpoint_section.click()
         
-        # Enter API endpoint URL
-        endpoint_input = driver.find_element(By.CLASS_NAME, 'css-d4v849')
+        # 5. Input handling with clear and retry
+        endpoint_input = WebDriverWait(driver, 10).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, 'input.css-d4v849'))
+        )
         endpoint_input.clear()
         endpoint_input.send_keys(f'https://api.dz.com/api/{obj["slug"]}')
         
@@ -179,9 +216,11 @@ def main():
 
             # Configure browser
             options = webdriver.ChromeOptions()
-            options.add_argument('--headless')
+            options.add_argument('--headless=new')
             options.add_argument('--disable-gpu')
             options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-blink-features=AutomationControlled')
             options.add_argument('--window-size=1920,1080')
             
             with webdriver.Chrome(options=options) as driver:

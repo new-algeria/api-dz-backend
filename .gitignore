@@ -61,3 +61,7 @@ temp/
 
 # Yarn Integrity file
 .yarn-integrity
+
+# venv python scrapper 
+datas_description.json
+datas_description_backup.json
