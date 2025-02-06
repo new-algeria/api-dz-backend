@@ -12,6 +12,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from urllib.parse import urlparse
 from pathlib import Path
 
@@ -99,36 +100,6 @@ def solve_cloudflare(driver):
 
 
 def process_object(driver, obj, cookies_list, local_storage_list, session_storage_list, jwt_token_value):
-#     """Enhanced with explicit waits and error recovery"""
-#     # try:
-#     #     driver.get('https://rapidapi.com/studio/api_22dd3f3e-f11a-494c-a080-228eb6f67e8c/client/4b16491c-11b6-468c-b841-03c78261b8cd')
-#     #     driver.add_cookie({'name': 'token','value': token,'domain': urlparse(driver.current_url).hostname})
-#     #     driver.add_cookie({'name': 'jwt_auth', 'value': token,'domain': urlparse(driver.current_url).hostname})
-#     #     driver.refresh()
-
-#     #     # Add explicit waits for critical elements
-#     #     WebDriverWait(driver, 15).until(
-#     #         EC.presence_of_element_located((By.CSS_SELECTOR, 'div.css-vyrhqs.css-1lfcwor'))
-#     #     )
-        
-#     #     # Click on the div with specific classes
-#     #     target_div = WebDriverWait(driver, 10).until(
-#     #         EC.presence_of_element_located((By.XPATH, '//div[contains(@class, "css-vyrhqs") and contains(@class, "css-1lfcwor")]'))
-#     #     )
-#     #     buttons = target_div.find_elements(By.CLASS_NAME, 'css-1tfwfkp')
-#     #     if len(buttons) >= 2:
-#     #         buttons[1].click()
-        
-#     #     time.sleep(4)  # Wait for page load
-        
-#     #     # Click on API endpoint div
-#     #     endpoint_div = driver.find_element(By.CLASS_NAME, 'elrb9vu0.css-1992qbr')
-#     #     endpoint_div.click()
-        
-#     #     # Enter API endpoint URL
-#     #     endpoint_input = driver.find_element(By.CLASS_NAME, 'css-d4v849')
-#     #     endpoint_input.clear()
-#     #     endpoint_input.send_keys(f'https://api.dz.com/api/{obj["slug"]}')
     """Robust element handling with full cookie injection, User-Agent, and retries"""
     for attempt in range(3):
         try:
@@ -166,8 +137,8 @@ def process_object(driver, obj, cookies_list, local_storage_list, session_storag
                 except Exception as e:
                     print(f"Warning: Could not set cookie {cookie['name']}: {str(e)}")
             # Add JWT token as a cookie
-            driver.add_cookie({'name': 'token', 'value': jwt_token_value, 'domain': base_domain, 'path': '/', 'secure': True, 'httpOnly': False, 'sameSite': 'Lax'})
-            driver.add_cookie({'name': 'jwt_auth', 'value': jwt_token_value, 'domain': base_domain, 'path': '/', 'secure': True, 'httpOnly': False, 'sameSite': 'Lax'})
+            driver.add_cookie({'name': 'token', 'value': jwt_token_value, 'domain': base_domain, 'path': '/', 'secure': True, 'httpOnly': False, 'sameSite': 'Strict'})
+            driver.add_cookie({'name': 'jwt_auth', 'value': jwt_token_value, 'domain': base_domain, 'path': '/', 'secure': True, 'httpOnly': False, 'sameSite': 'Strict'})
             # Print all cookies and specifically check for JWT cookie
             all_cookies = driver.get_cookies()
             print("All cookies:", all_cookies)
@@ -179,10 +150,9 @@ def process_object(driver, obj, cookies_list, local_storage_list, session_storag
 
             # Human-like navigation pattern
             ActionChains(driver).send_keys(Keys.PAGE_DOWN).pause(1).perform()
+
+            # Navigate to the target page
             driver.get("https://rapidapi.com/studio/api_22dd3f3e-f11a-494c-a080-228eb6f67e8c/client/4b16491c-11b6-468c-b841-03c78261b8cd")
-            
-            # if not solve_cloudflare(driver):
-            #     raise Exception("Cloudflare challenge failed")
 
             # Element interaction flow
             container = WebDriverWait(driver, 15).until(
@@ -247,40 +217,6 @@ def process_object(driver, obj, cookies_list, local_storage_list, session_storag
             driver.save_screenshot(f"error_{obj.get('slug', 'unknown')}.png")
             sys.exit(1)
             raise
-        # try:
-        #     driver.set_window_size(1920, 1080)
-        #     driver.implicitly_wait(10)
-
-        #     base_url = 'https://rapidapi.com'
-        #     for cookie_data in cookies_list: # Set cookies - keep this part
-        #         cookie_options = {
-        #             'name': cookie_data['name'],
-        #             'value': cookie_data['value'],
-        #             'domain': cookie_data['domain'],
-        #             'path': cookie_data['path'],
-        #             'secure': cookie_data['secure'],
-        #             'httpOnly': cookie_data.get('httpOnly', False),
-        #             'sameSite': cookie_data.get('sameSite', 'unspecified'),
-        #             'expiry': cookie_data.get('expirationDate')
-        #         }
-        #         if cookie_options['expiry']:
-        #             cookie_options['expiry'] = int(cookie_options['expiry'])
-        #         driver.add_cookie(cookie_options)
-
-        #     driver.get(base_url)
-        #     time.sleep(10) # Wait after base URL
-
-        #     target_url = 'https://rapidapi.com/studio/api_22dd3f3e-f11a-494c-a080-228eb6f67e8c/client/4b16491c-11b6-468c-b841-03c78261b8cd'
-        #     driver.get(target_url)
-        #     time.sleep(30)  # Wait for a longer time to observe
-
-        #     print(f"process_object for {obj['slug']} finished navigation without crash.")
-        #     return True
-
-        # except Exception as e:
-        #     print(f"Error in process_object (navigation only): {e}")
-        #     driver.save_screenshot(f"error_navigation_only_{obj.get('slug', 'unknown')}.png")
-        #     raise
 def main():
     parser = ArgumentParser(description='Automated API Documentation Updater')
     parser.add_argument('--token', required=True, help='JWT authentication token')
