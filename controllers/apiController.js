@@ -3,6 +3,8 @@ const { convertFromJson } = require("../utils/converter");
 const axios = require('axios');
 const { sendEmail } = require('../utils/mailer');
 const { handleDownload, generateLink } = require("../utils/downloadHandler");
+const path = require('path');
+const { scanMapDirectories } = require('../utils/directoryScanner');
 
 exports.getDetails = async (req, res) => {
   const slug = req.params.slug;
@@ -182,3 +184,47 @@ exports.sendNotification = async (req, res) => {
 // Download Section (generate link / token and download item )
 exports.generateDownloadLink = generateLink;
 exports.downloadFile = handleDownload;
+
+exports.getMapsInfo = async (req, res) => {
+  const baseUrl = process.env.CLOUD_STORAGE_URL;
+  try {
+    const directories = await scanMapDirectories(baseUrl);
+    res.json({
+      count: directories.length,
+      maps: directories
+    });
+  } catch (error) {
+    console.error("Error fetching maps info:", error.message);
+    res.status(500).json({ error: "Failed to fetch maps information" });
+  }
+};
+
+exports.getMapFile = async (req, res) => {
+  const { folder, type } = req.params;
+  const baseUrl = process.env.CLOUD_STORAGE_URL;
+
+  try {
+    const fileTypes = {
+      description: 'json',
+      map: 'html',
+      preview: 'png'
+    };
+
+    const fileUrl = `${baseUrl}/spatial/maps/${folder}/${type}.${fileTypes[type]}`;
+    
+    // For preview and map, stream the response
+    if (type === 'preview' || type === 'map') {
+      const response = await axios.get(fileUrl, { responseType: 'stream' });
+      res.setHeader('Content-Type', type === 'preview' ? 'image/png' : 'text/html');
+      return response.data.pipe(res);
+    }
+
+    // For description (JSON)
+    const data = await fetchUri(fileUrl);
+    res.json(data);
+
+  } catch (error) {
+    console.error(`Error fetching map ${type}:`, error.message);
+    res.status(404).json({ error: `Map ${type} not found` });
+  }
+};
