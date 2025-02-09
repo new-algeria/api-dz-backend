@@ -65,7 +65,12 @@ app.get('/:token([a-f0-9]{12})', async (req, res) => {
 });
 
 // Protect all /api routes with JWT except /api/details
-app.use("/api", excludePath(allowedOrigins, ['details', 'info']), apiRoutes);
+app.use("/api", excludePath(allowedOrigins, [
+  'details', 
+  'info', 
+  'maps/info',
+  'maps/[^/]+/(description|map|preview)'
+]), apiRoutes);
 
 // CSRF error handler
 app.use(handleCSRFError);
