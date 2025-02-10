@@ -8,35 +8,68 @@ const { scanMapDirectories } = require('../utils/directoryScanner');
 
 // Helper function to remove sensitive fields
 const removeSensitiveInfo = (obj) => {
-  if (typeof obj !== 'object' || obj === null) return obj;
-  
-  const newObj = Array.isArray(obj) ? [...obj] : {...obj};
-  
+  if (typeof obj !== "object" || obj === null) return obj;
+
+  const newObj = Array.isArray(obj) ? [...obj] : { ...obj };
+
   // Remove sensitive fields from the root level
   delete newObj.link;
   delete newObj.path;
   delete newObj.website;
-  
+
   // Remove sensitive fields from source object if it exists
-  if (newObj.source && typeof newObj.source === 'object') {
+  if (newObj.source && typeof newObj.source === "object") {
     delete newObj.source.link;
     delete newObj.source.path;
     delete newObj.source.website;
   }
-  
+
   // Recursively clean nested objects and arrays
   if (Array.isArray(newObj)) {
-    return newObj.map(item => removeSensitiveInfo(item));
+    return newObj.map((item) => removeSensitiveInfo(item));
   }
-  
+
   // Clean nested objects
-  Object.keys(newObj).forEach(key => {
-    if (typeof newObj[key] === 'object' && newObj[key] !== null) {
+  Object.keys(newObj).forEach((key) => {
+    if (typeof newObj[key] === "object" && newObj[key] !== null) {
       newObj[key] = removeSensitiveInfo(newObj[key]);
     }
   });
-  
+
   return newObj;
+};
+
+exports.getDataInfo = async (req, res) => {
+  const baseUrl = process.env.CLOUD_STORAGE_URL;
+
+  try {
+    const dataDescriptionUrl = `${baseUrl}/datas_description.json`;
+    const dataDescriptions = await fetchUri(dataDescriptionUrl);
+
+    // Process each item to add dataFormat and remove sensitive info
+    const processedData = dataDescriptions.map((item) => {
+      // Determine data format
+      let dataFormat = "json"; // default format for API endpoints
+      if (item.path) {
+        const extension = path.extname(item.path).toLowerCase();
+        dataFormat = extension ? extension.substring(1) : "json";
+      }
+
+      // Clean sensitive information
+      const cleanedItem = removeSensitiveInfo(item);
+
+      // Return item with dataFormat
+      return {
+        dataFormat,
+        ...cleanedItem,
+      };
+    });
+
+    res.json(processedData);
+  } catch (error) {
+    console.error("Error fetching data info:", error.message);
+    res.status(500).json({ error: "Server error" });
+  }
 };
 
 exports.getDetails = async (req, res) => {
@@ -70,7 +103,7 @@ exports.getDetails = async (req, res) => {
       const dataUrl = `${baseUrl}${unescapedPath}`;
       [data, metadata] = await Promise.all([
         fetchData(dataUrl),
-        fetchMetadata(dataUrl)
+        fetchMetadata(dataUrl),
       ]);
     } else if (tempLink) {
       // Handle API endpoint
@@ -99,17 +132,25 @@ exports.getDetails = async (req, res) => {
     // Clean sensitive information from item and preview
     const cleanedItem = removeSensitiveInfo(item);
 
+    // Determine data format
+    let dataFormat = "json"; // default format for API endpoints
+    if (tempPath) {
+      const extension = path.extname(tempPath).toLowerCase();
+      dataFormat = extension ? extension.substring(1) : "json"; // remove the dot from extension
+    }
+
     // Return structured response with cleaned data
     res.json({
-      'type': sourceType,
+      type: sourceType,
+      dataFormat: dataFormat,
       'last-edited': new Date(metadata["last-modified"]),
-      'length': data.length,
+      length: data.length,
       preview: preview,
-      ...cleanedItem
+      ...cleanedItem,
     });
   } catch (error) {
-  console.error("Error fetching data:", error.message);
-  res.status(500).json({ error: "Server error" });
+    console.error("Error fetching data:", error.message);
+    res.status(500).json({ error: "Server error" });
   }
 };
 
