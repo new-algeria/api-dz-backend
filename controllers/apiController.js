@@ -6,6 +6,39 @@ const { handleDownload, generateLink } = require("../utils/downloadHandler");
 const path = require('path');
 const { scanMapDirectories } = require('../utils/directoryScanner');
 
+// Helper function to remove sensitive fields
+const removeSensitiveInfo = (obj) => {
+  if (typeof obj !== 'object' || obj === null) return obj;
+  
+  const newObj = Array.isArray(obj) ? [...obj] : {...obj};
+  
+  // Remove sensitive fields from the root level
+  delete newObj.link;
+  delete newObj.path;
+  delete newObj.website;
+  
+  // Remove sensitive fields from source object if it exists
+  if (newObj.source && typeof newObj.source === 'object') {
+    delete newObj.source.link;
+    delete newObj.source.path;
+    delete newObj.source.website;
+  }
+  
+  // Recursively clean nested objects and arrays
+  if (Array.isArray(newObj)) {
+    return newObj.map(item => removeSensitiveInfo(item));
+  }
+  
+  // Clean nested objects
+  Object.keys(newObj).forEach(key => {
+    if (typeof newObj[key] === 'object' && newObj[key] !== null) {
+      newObj[key] = removeSensitiveInfo(newObj[key]);
+    }
+  });
+  
+  return newObj;
+};
+
 exports.getDetails = async (req, res) => {
   const slug = req.params.slug;
   const baseUrl = process.env.CLOUD_STORAGE_URL;
@@ -24,20 +57,24 @@ exports.getDetails = async (req, res) => {
       return res.status(404).json({ error: "Data not found" });
     }
 
+    // Store the path/link temporarily for fetching
+    const tempPath = item.path;
+    const tempLink = item.link;
+
     // Define variables for data and metadata
     let data, metadata, sourceType;
 
-    if (item.path) {
+    if (tempPath) {
       // Handle file from storage
-      const unescapedPath = item.path.replace(/\//g, "/");
+      const unescapedPath = tempPath.replace(/\//g, "/");
       const dataUrl = `${baseUrl}${unescapedPath}`;
       [data, metadata] = await Promise.all([
         fetchData(dataUrl),
         fetchMetadata(dataUrl)
       ]);
-    } else if (item.link) {
+    } else if (tempLink) {
       // Handle API endpoint
-      data = await fetchUri(item.link);
+      data = await fetchUri(tempLink);
       metadata = {
         "last-modified": new Date().toUTCString(), // Current time as API data is real-time
         "content-type": "application/json",
@@ -59,13 +96,16 @@ exports.getDetails = async (req, res) => {
       preview = Array.isArray(data) ? data.slice(startIndex) : data;
     }
 
-    // Return structured response with source type
+    // Clean sensitive information from item and preview
+    const cleanedItem = removeSensitiveInfo(item);
+
+    // Return structured response with cleaned data
     res.json({
       'type': sourceType,
       'last-edited': new Date(metadata["last-modified"]),
       'length': data.length,
-      preview,
-      ...item
+      preview: preview,
+      ...cleanedItem
     });
   } catch (error) {
   console.error("Error fetching data:", error.message);
