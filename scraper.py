@@ -1,4 +1,4 @@
-import os
+`import os
 import sys
 import json
 import time
@@ -6,6 +6,8 @@ import random
 import paramiko
 import logging
 from argparse import ArgumentParser
+from urllib.parse import urlparse
+from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
@@ -13,8 +15,6 @@ from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
-from urllib.parse import urlparse
-from pathlib import Path
 
 # Configure logging
 logging.basicConfig(
@@ -237,7 +237,6 @@ def main():
             # Find new entries
             new_entries = [entry for entry in current_data if entry not in backup_data]
             if not new_entries:
-                print("No new entries to process")
                 return
 
             # Configure browser
@@ -316,4 +315,4 @@ def main():
         sys.exit(1)
 
 if __name__ == '__main__':
-    main()
+    main()`
