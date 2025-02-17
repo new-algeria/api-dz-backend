@@ -132,34 +132,54 @@ def perform_login(driver, email, password):
         EC.url_contains("studio"))
     human_like_delay(2, 4)  # Additional post-login delay
 
-def process_object(driver, obj):
-    """Simplified processing without manual cookie/storage injection"""
+def process_object(driver, obj, jwt_token):
+    """Enhanced processing with robust element handling"""
     for attempt in range(3):
         try:
-            # Human-like navigation pattern
-            ActionChains(driver).send_keys(Keys.PAGE_DOWN).pause(1).perform()
-            
-            # Navigate to target page
+            # Navigate to target page with extended wait
             driver.get("https://rapidapi.com/studio/api_22dd3f3e-f11a-494c-a080-228eb6f67e8c/client/4b16491c-11b6-468c-b841-03c78261b8cd")
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.TAG_NAME, 'body')))
+            
+            # --- Click 'Add' Button with improved detection ---
+            try:
+                human_like_delay(2, 3)
+                add_button = WebDriverWait(driver, 15).until(
+                    EC.element_to_be_clickable((By.XPATH, 
+                        "//button[.//*[local-name()='svg' and @aria-label='add']]")))
+                ActionChains(driver).move_to_element(add_button).pause(0.5).click().perform()
+                logging.info("Clicked 'Add' button successfully")
+            except Exception as e:
+                logging.error(f"Add button error: {str(e)}")
+                raise
 
-            # Element interaction flow
-            container = WebDriverWait(driver, 15).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "div.css-vyrhqs.css-1lfcwor"))
-            )
-            buttons = container.find_elements(By.CSS_SELECTOR, "button.css-1tfwfkp")
-            driver.execute_script("arguments[0].click()", buttons[1])
-            
-            endpoint_section = WebDriverWait(driver, 10).until(
-                EC.visibility_of_element_located((By.CSS_SELECTOR, "div.elrb9vu0.css-1992qbr"))
-            )
-            driver.execute_script("arguments[0].click()", endpoint_section)
-            
-            endpoint_input = WebDriverWait(driver, 10).until(
-                EC.visibility_of_element_located((By.CSS_SELECTOR, "input.css-d4v849"))
-            )
-            human_like_delay()
-            endpoint_input.clear()
-            endpoint_input.send_keys(f'https://api.dz.com/api/{obj["slug"]}')
+            # --- Handle Endpoint Input with visibility check ---
+            try:
+                endpoint_input = WebDriverWait(driver, 15).until(
+                    EC.visibility_of_element_located(
+                        (By.CSS_SELECTOR, "div.e10vnnfs0.css-1dxvcps[contenteditable='true']")
+                    ))
+                # Human-like typing simulation
+                human_like_delay(1, 2)
+                endpoint_input.click()
+                for char in f'https://api.dz.com/api/{obj["slug"]}':
+                    endpoint_input.send_keys(char)
+                    time.sleep(random.uniform(0.1, 0.3))
+                logging.info("Endpoint input filled successfully")
+            except Exception as e:
+                logging.error(f"Endpoint input error: {str(e)}")
+                raise
+
+            # --- Description Button with case-insensitive search ---
+            try:
+                desc_button = WebDriverWait(driver, 15).until(
+                    EC.element_to_be_clickable((By.XPATH,
+                        "//button[.//div[contains(translate(text(), 'DESCRIPTION', 'description'), 'description')]]")))
+                ActionChains(driver).move_to_element(desc_button).pause(0.5).click().perform()
+                logging.info("Description button clicked")
+            except Exception as e:
+                logging.error(f"Description button error: {str(e)}")
+                raise
             
             # Description section
             desc_button = driver.find_element(By.XPATH, '//button[.//div[text()="Description"]]')
@@ -188,7 +208,7 @@ def process_object(driver, obj):
                 EC.presence_of_element_located((By.CSS_SELECTOR, '.css-sf4iut .css-kpahiq p'))
             )
             driver.execute_script("arguments[0].innerText = ''", token_input)
-            token_input.send_keys(jwt_token_value)
+            token_input.send_keys(jwt_token)
             
             # Sync
             sync_button = driver.find_element(By.CLASS_NAME, 'css-1rxme48')
@@ -208,6 +228,7 @@ def main():
     parser.add_argument('--mail', required=True, help='Login email')
     parser.add_argument('--password', required=True, help='Login password')
     parser.add_argument('--sftp-uri', required=True, help='SFTP connection URI')
+    parser.add_argument('--token', required=True, help='JWT token for API requests')
     args = parser.parse_args()
 
     try:
@@ -248,7 +269,7 @@ def main():
                 for idx, entry in enumerate(new_entries, 1):
                     try:
                         logging.info(f"Processing {entry['slug']} ({idx}/{len(new_entries)})")
-                        if not process_object(driver, entry):
+                        if not process_object(driver, entry, args.token):
                             success = False
                             break
                     except Exception as e:
