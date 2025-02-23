@@ -139,18 +139,142 @@ def process_object(driver, obj, jwt_token):
             # Navigate to target page with extended wait
             driver.get("https://rapidapi.com/studio/api_22dd3f3e-f11a-494c-a080-228eb6f67e8c/client/4b16491c-11b6-468c-b841-03c78261b8cd")
             WebDriverWait(driver, 20).until(
-                EC.presence_of_element_located((By.TAG_NAME, 'body')))
+                EC.presence_of_element_located((By.TAG_NAME, 'body'))
+            )
             
-            # --- Click 'Add' Button with improved detection ---
+            # --- Click 'Add' Button with JS-based detection ---
             try:
-                human_like_delay(2, 3)
-                add_button = WebDriverWait(driver, 15).until(
-                    EC.element_to_be_clickable((By.XPATH, 
-                        "//button[.//*[local-name()='svg' and @aria-label='add']]")))
-                ActionChains(driver).move_to_element(add_button).pause(0.5).click().perform()
-                logging.info("Clicked 'Add' button successfully")
+                human_like_delay(10, 15)
+                
+                # Inject JavaScript to search (including shadow DOM) and click the add button
+                js_script = """
+                console.log("Starting search for add button...");
+                function findButtonInContext(context) {
+                    const addSvg = context.querySelector('svg[aria-label="add"]');
+                    if (addSvg) {
+                        console.log("Found SVG with aria-label 'add'");
+                        const addButton = addSvg.closest('button');
+                        if (addButton) {
+                            console.log("Found closest button for add SVG");
+                            addButton.style.border = '3px solid #00ff00'; // Green border for success
+                            return addButton;
+                        }
+                    }
+                    
+                    const tooltipButton = context.querySelector('button[aria-describedby^="tooltip-"]');
+                    if (tooltipButton) {
+                        console.log("Found tooltip button");
+                        tooltipButton.style.border = '3px solid #ff0000'; // Red border for fallback
+                        return tooltipButton;
+                    }
+                    console.log("No button found in current context");
+                    return null;
+                }
+
+                function searchInShadowDOM(element) {
+                    if (element.shadowRoot) {
+                        console.log("Element has shadowRoot, searching within it");
+                        const button = findButtonInContext(element.shadowRoot);
+                        if (button) return button;
+                        for (const child of element.shadowRoot.children) {
+                            const result = searchInShadowDOM(child);
+                            if (result) return result;
+                        }
+                    }
+                    for (const child of element.children) {
+                        const result = searchInShadowDOM(child);
+                        if (result) return result;
+                    }
+                    return null;
+                }
+
+                //let button = findButtonInContext(document) || searchInShadowDOM(document.body);
+                let button = false;
+                
+                if (!button) {
+                    console.log("Button not found in document, now checking iframes");
+                    const iframes = document.querySelectorAll('iframe');
+                    for (const iframe of iframes) {
+                        try {
+                            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                            console.log("Searching in iframe:", iframe);
+                            button = findButtonInContext(iframeDoc) || searchInShadowDOM(iframeDoc.body);
+                            if (button) break;
+                        } catch(e) {
+                            console.log("Error accessing iframe:", e);
+                        }
+                    }
+                }
+                if (button) {
+                    console.log("Button successfully found:", button);
+                    // Add visual feedback
+                    button.style.border = '3px solid #00ff00';
+                    button.style.boxShadow = '0 0 10px rgba(0,255,0,0.5)';
+                    button.click();
+                    return button;
+                }
+                console.log("Add button not found after searching all contexts");
+                return null;
+                """
+                # Execute JS and get element reference
+                # element = driver.execute_script(js_script)
+                # print(f"Element: {element}")
+                # print(element)
+                # if element:
+                #     logging.info("Button found and visually confirmed - attempting click...")
+                #     # Try 3 different click methods with verification
+                #     success = False
+                # driver.save_screenshot('2-button_visual_confirmation.png')
+                # if element:
+                #     logging.info("Button visually confirmed - attempting click...")
+                    
+                #     # Try 3 different click methods with verification
+                #     success = False
+                #     for attempt in range(3):
+                #         try:
+                #             # Method 1: Direct JavaScript click
+                #             driver.execute_script("arguments[0].click();", element)
+                #             human_like_delay(0.5, 1)
+                            
+                #             # Verify click by checking for expected result
+                #             if driver.execute_script("return document.querySelector('.request-editor') !== null"):
+                #                 success = True
+                #                 break
+                            
+                #             # Method 2: Selenium click with scroll into view
+                #             driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", element)
+                #             human_like_delay(0.3, 0.7)
+                #             ActionChains(driver).move_to_element(element).pause(0.5).click().perform()
+                            
+                #             # Method 3: Click via coordinates as last resort
+                #             if not success:
+                #                 rect = element.rect
+                #                 ActionChains(driver).move_by_offset(rect['x'], rect['y']).click().perform()
+                            
+                #             success = True
+                #             break
+                #         except Exception as e:
+                #             logging.warning(f"Click attempt {attempt+1} failed: {str(e)}")
+                #             human_like_delay(1, 2)
+                    
+                #     if not success:
+                #         raise Exception("All click attempts failed")
+                        
+                #     logging.info("Add button successfully clicked with verification")
+                # else:
+                #     raise Exception("Add button not found in DOM")
+                
+                result = driver.execute_script(js_script)
+                driver.save_screenshot('button_visual_confirmation.png')
+                if result:
+                    logging.info("Add button found and clicked via JS injection.")
+                else:
+                    raise Exception("Add button not found in injected JS script.")
+
+            
             except Exception as e:
-                logging.error(f"Add button error: {str(e)}")
+                logging.error(f"Add button error via JS injection: {str(e)}")
+                driver.save_screenshot("error_add_button_js.png")
                 raise
 
             # --- Handle Endpoint Input with visibility check ---
@@ -159,7 +283,6 @@ def process_object(driver, obj, jwt_token):
                     EC.visibility_of_element_located(
                         (By.CSS_SELECTOR, "div.e10vnnfs0.css-1dxvcps[contenteditable='true']")
                     ))
-                # Human-like typing simulation
                 human_like_delay(1, 2)
                 endpoint_input.click()
                 for char in f'https://api.dz.com/api/{obj["slug"]}':
@@ -169,6 +292,17 @@ def process_object(driver, obj, jwt_token):
             except Exception as e:
                 logging.error(f"Endpoint input error: {str(e)}")
                 raise
+
+            # ... further processing steps ...
+
+            return True
+        except Exception as e:
+            logging.error(f"Scraper Error: {str(e)}")
+            if attempt == 2:
+                driver.save_screenshot(f"crash_{obj['slug']}.png")
+                raise
+            human_like_delay(5, 10)
+            driver.refresh()
 
             # --- Description Button with case-insensitive search ---
             try:
@@ -181,40 +315,98 @@ def process_object(driver, obj, jwt_token):
                 logging.error(f"Description button error: {str(e)}")
                 raise
             
-            # Description section
-            desc_button = driver.find_element(By.XPATH, '//button[.//div[text()="Description"]]')
-            desc_button.click()
-            
-            title_input = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.CLASS_NAME, 'css-d4v849'))
-            )
-            title_input.clear()
-            title_input.send_keys(obj['title']['en'])
-            
-            description_area = driver.find_element(By.CSS_SELECTOR, 'textarea.css-1ccau2i')
-            description_area.clear()
-            description_area.send_keys(obj['description']['en'])
-            
-            # Auth section
-            auth_button = driver.find_element(By.XPATH, '//button[.//div[text()="Auth"]]')
-            auth_button.click()
-            
-            bearer_button = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, '//button[.//div[text()="Bearer"]]'))
-            )
-            bearer_button.click()
-            
-            token_input = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, '.css-sf4iut .css-kpahiq p'))
-            )
-            driver.execute_script("arguments[0].innerText = ''", token_input)
-            token_input.send_keys(jwt_token)
-            
-            # Sync
-            sync_button = driver.find_element(By.CLASS_NAME, 'css-1rxme48')
-            sync_button.click()
-            time.sleep(5)  # Wait for sync
-            
+                    # --- Description Section ---
+            try:
+                # Click Description Button
+                desc_button = WebDriverWait(driver, 15).until(
+                    EC.element_to_be_clickable((By.XPATH, 
+                        '//button[.//div[contains(translate(text(), "DESCRIPTION", "description"), "description")]]'))
+                )
+                ActionChains(driver).move_to_element(desc_button).pause(0.5).click().perform()
+                logging.info("Clicked 'Description' button successfully")
+            except Exception as e:
+                logging.error(f"Failed to click 'Description' button: {str(e)}")
+                raise
+
+            # Fill Title Input
+            try:
+                title_input = WebDriverWait(driver, 15).until(
+                    EC.visibility_of_element_located((By.CLASS_NAME, 'css-d4v849'))
+                )
+                title_input.clear()
+                human_type(title_input, obj['title']['en'])  # Simulate human typing
+                logging.info("Title input filled successfully")
+            except Exception as e:
+                logging.error(f"Failed to fill title input: {str(e)}")
+                raise
+
+            # Fill Description Textarea
+            try:
+                description_area = WebDriverWait(driver, 15).until(
+                    EC.visibility_of_element_located((By.CSS_SELECTOR, 'textarea.css-1ccau2i'))
+                )
+                description_area.clear()
+                human_type(description_area, obj['description']['en'])  # Simulate human typing
+                logging.info("Description textarea filled successfully")
+            except Exception as e:
+                logging.error(f"Failed to fill description textarea: {str(e)}")
+                raise
+
+            # --- Auth Section ---
+            try:
+                # Click Auth Button
+                auth_button = WebDriverWait(driver, 15).until(
+                    EC.element_to_be_clickable((By.XPATH, 
+                        '//button[.//div[contains(translate(text(), "AUTH", "auth"), "auth")]]'))
+                )
+                ActionChains(driver).move_to_element(auth_button).pause(0.5).click().perform()
+                logging.info("Clicked 'Auth' button successfully")
+            except Exception as e:
+                logging.error(f"Failed to click 'Auth' button: {str(e)}")
+                raise
+
+            # Click Bearer Button
+            try:
+                bearer_button = WebDriverWait(driver, 15).until(
+                    EC.element_to_be_clickable((By.XPATH, 
+                        '//button[.//div[contains(translate(text(), "BEARER", "bearer"), "bearer")]]'))
+                )
+                ActionChains(driver).move_to_element(bearer_button).pause(0.5).click().perform()
+                logging.info("Clicked 'Bearer' button successfully")
+            except Exception as e:
+                logging.error(f"Failed to click 'Bearer' button: {str(e)}")
+                raise
+
+            # Fill Token Input
+            try:
+                token_input = WebDriverWait(driver, 15).until(
+                    EC.visibility_of_element_located((By.CSS_SELECTOR, '.css-sf4iut .css-kpahiq p'))
+                )
+                driver.execute_script("arguments[0].innerText = ''", token_input)
+                human_type(token_input, jwt_token)  # Simulate human typing
+                logging.info("Token input filled successfully")
+            except Exception as e:
+                logging.error(f"Failed to fill token input: {str(e)}")
+                raise
+
+            # --- Sync Section ---
+            try:
+                sync_button = WebDriverWait(driver, 15).until(
+                    EC.element_to_be_clickable((By.CLASS_NAME, 'css-1rxme48'))
+                )
+                ActionChains(driver).move_to_element(sync_button).pause(0.5).click().perform()
+                logging.info("Clicked 'Sync' button successfully")
+                
+                # Wait for sync with dynamic check instead of static sleep
+                WebDriverWait(driver, 10).until(
+                    lambda d: "sync complete" in d.page_source.lower() or 
+                            "success" in d.page_source.lower()
+                )
+                logging.info("Sync completed successfully")
+            except Exception as e:
+                logging.error(f"Failed to complete sync: {str(e)}")
+                raise
+
             return True
         except Exception as e:
             logging.error(f"Scraper Error: {str(e)}")
