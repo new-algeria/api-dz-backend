@@ -134,20 +134,55 @@ def perform_login(driver, email, password):
 
 def process_object(driver, obj, jwt_token):
     """Enhanced processing with robust element handling"""
+    # Navigate to target page with extended wait
+    driver.get("https://rapidapi.com/studio/api_22dd3f3e-f11a-494c-a080-228eb6f67e8c/client/4b16491c-11b6-468c-b841-03c78261b8cd")
+    WebDriverWait(driver, 20).until(
+        EC.presence_of_element_located((By.TAG_NAME, 'body'))
+    )
     for attempt in range(3):
         try:
-            # Navigate to target page with extended wait
-            driver.get("https://rapidapi.com/studio/api_22dd3f3e-f11a-494c-a080-228eb6f67e8c/client/4b16491c-11b6-468c-b841-03c78261b8cd")
-            WebDriverWait(driver, 20).until(
-                EC.presence_of_element_located((By.TAG_NAME, 'body'))
-            )
+            
+            # Define the shared shadow DOM and iframe logic as a separate string
+            SHARED_SHADOW_DOM_IFRAME_LOGIC = """
+                function searchInShadowDOM(element) {
+                    if (element.shadowRoot) {
+                        console.log("Element has shadowRoot, searching within it");
+                        const result = findTargetInContext(element.shadowRoot);
+                        if (result) return result;
+                        for (const child of element.shadowRoot.children) {
+                            const result = searchInShadowDOM(child);
+                            if (result) return result;
+                        }
+                    }
+                    for (const child of element.children) {
+                        const result = searchInShadowDOM(child);
+                        if (result) return result;
+                    }
+                    return null;
+                }
+
+                function searchInIframes() {
+                    const iframes = document.querySelectorAll('iframe');
+                    for (const iframe of iframes) {
+                        try {
+                            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                            console.log("Searching in iframe:", iframe);
+                            const result = findTargetInContext(iframeDoc) || searchInShadowDOM(iframeDoc.body);
+                            if (result) return result;
+                        } catch(e) {
+                            console.log("Error accessing iframe:", e);
+                        }
+                    }
+                    return null;
+                }
+            """
             
             # --- Click 'Add' Button with JS-based detection ---
             try:
                 human_like_delay(10, 15)
                 
                 # Inject JavaScript to search (including shadow DOM) and click the add button
-                js_script = """
+                js_script ="""
                 console.log("Starting search for add button...");
                 function findButtonInContext(context) {
                     const addSvg = context.querySelector('svg[aria-label="add"]');
@@ -171,22 +206,7 @@ def process_object(driver, obj, jwt_token):
                     return null;
                 }
 
-                function searchInShadowDOM(element) {
-                    if (element.shadowRoot) {
-                        console.log("Element has shadowRoot, searching within it");
-                        const button = findButtonInContext(element.shadowRoot);
-                        if (button) return button;
-                        for (const child of element.shadowRoot.children) {
-                            const result = searchInShadowDOM(child);
-                            if (result) return result;
-                        }
-                    }
-                    for (const child of element.children) {
-                        const result = searchInShadowDOM(child);
-                        if (result) return result;
-                    }
-                    return null;
-                }
+                %SHARED_SHADOW_DOM_IFRAME_LOGIC%
 
                 //let button = findButtonInContext(document) || searchInShadowDOM(document.body);
                 let button = false;
@@ -205,68 +225,26 @@ def process_object(driver, obj, jwt_token):
                         }
                     }
                 }
+                // Modify the button return section in your js_script:
                 if (button) {
                     console.log("Button successfully found:", button);
                     // Add visual feedback
                     button.style.border = '3px solid #00ff00';
                     button.style.boxShadow = '0 0 10px rgba(0,255,0,0.5)';
                     button.click();
-                    return button;
+                    // Return success status instead of button element
+                    return {
+                        success: true,
+                        message: "Button clicked successfully"
+                    };
                 }
                 console.log("Add button not found after searching all contexts");
                 return null;
-                """
-                # Execute JS and get element reference
-                # element = driver.execute_script(js_script)
-                # print(f"Element: {element}")
-                # print(element)
-                # if element:
-                #     logging.info("Button found and visually confirmed - attempting click...")
-                #     # Try 3 different click methods with verification
-                #     success = False
-                # driver.save_screenshot('2-button_visual_confirmation.png')
-                # if element:
-                #     logging.info("Button visually confirmed - attempting click...")
-                    
-                #     # Try 3 different click methods with verification
-                #     success = False
-                #     for attempt in range(3):
-                #         try:
-                #             # Method 1: Direct JavaScript click
-                #             driver.execute_script("arguments[0].click();", element)
-                #             human_like_delay(0.5, 1)
-                            
-                #             # Verify click by checking for expected result
-                #             if driver.execute_script("return document.querySelector('.request-editor') !== null"):
-                #                 success = True
-                #                 break
-                            
-                #             # Method 2: Selenium click with scroll into view
-                #             driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", element)
-                #             human_like_delay(0.3, 0.7)
-                #             ActionChains(driver).move_to_element(element).pause(0.5).click().perform()
-                            
-                #             # Method 3: Click via coordinates as last resort
-                #             if not success:
-                #                 rect = element.rect
-                #                 ActionChains(driver).move_by_offset(rect['x'], rect['y']).click().perform()
-                            
-                #             success = True
-                #             break
-                #         except Exception as e:
-                #             logging.warning(f"Click attempt {attempt+1} failed: {str(e)}")
-                #             human_like_delay(1, 2)
-                    
-                #     if not success:
-                #         raise Exception("All click attempts failed")
-                        
-                #     logging.info("Add button successfully clicked with verification")
-                # else:
-                #     raise Exception("Add button not found in DOM")
+                """.replace("%SHARED_SHADOW_DOM_IFRAME_LOGIC%", SHARED_SHADOW_DOM_IFRAME_LOGIC)
                 
                 result = driver.execute_script(js_script)
                 driver.save_screenshot('button_visual_confirmation.png')
-                if result:
+                if result and result.get('success'):
                     logging.info("Add button found and clicked via JS injection.")
                 else:
                     raise Exception("Add button not found in injected JS script.")
@@ -277,134 +255,342 @@ def process_object(driver, obj, jwt_token):
                 driver.save_screenshot("error_add_button_js.png")
                 raise
 
-            # --- Handle Endpoint Input with visibility check ---
+            # --- Endpoint Input JS Injection ---
             try:
-                endpoint_input = WebDriverWait(driver, 15).until(
-                    EC.visibility_of_element_located(
-                        (By.CSS_SELECTOR, "div.e10vnnfs0.css-1dxvcps[contenteditable='true']")
-                    ))
                 human_like_delay(1, 2)
-                endpoint_input.click()
-                for char in f'https://api.dz.com/api/{obj["slug"]}':
-                    endpoint_input.send_keys(char)
-                    time.sleep(random.uniform(0.1, 0.3))
-                logging.info("Endpoint input filled successfully")
-            except Exception as e:
-                logging.error(f"Endpoint input error: {str(e)}")
-                raise
+                endpoint_js = """
+                function findEndpointInContext(context) {
+                    const endpointDiv = context.querySelector('div.e10vnnfs0.css-1dxvcps[contenteditable="true"]');
+                    if (endpointDiv) {
+                        console.log("Found endpoint contenteditable div");
+                        endpointDiv.style.border = '3px solid #00ff00';
+                        endpointDiv.style.boxShadow = '0 0 10px rgba(0,255,0,0.5)';
+                        return endpointDiv;
+                    }
+                    return null;
+                }
 
-            # ... further processing steps ...
+                %SHARED_SHADOW_DOM_IFRAME_LOGIC%
 
-            return True
-        except Exception as e:
-            logging.error(f"Scraper Error: {str(e)}")
-            if attempt == 2:
-                driver.save_screenshot(f"crash_{obj['slug']}.png")
-                raise
-            human_like_delay(5, 10)
-            driver.refresh()
-
-            # --- Description Button with case-insensitive search ---
-            try:
-                desc_button = WebDriverWait(driver, 15).until(
-                    EC.element_to_be_clickable((By.XPATH,
-                        "//button[.//div[contains(translate(text(), 'DESCRIPTION', 'description'), 'description')]]")))
-                ActionChains(driver).move_to_element(desc_button).pause(0.5).click().perform()
-                logging.info("Description button clicked")
-            except Exception as e:
-                logging.error(f"Description button error: {str(e)}")
-                raise
-            
-                    # --- Description Section ---
-            try:
-                # Click Description Button
-                desc_button = WebDriverWait(driver, 15).until(
-                    EC.element_to_be_clickable((By.XPATH, 
-                        '//button[.//div[contains(translate(text(), "DESCRIPTION", "description"), "description")]]'))
-                )
-                ActionChains(driver).move_to_element(desc_button).pause(0.5).click().perform()
-                logging.info("Clicked 'Description' button successfully")
-            except Exception as e:
-                logging.error(f"Failed to click 'Description' button: {str(e)}")
-                raise
-
-            # Fill Title Input
-            try:
-                title_input = WebDriverWait(driver, 15).until(
-                    EC.visibility_of_element_located((By.CLASS_NAME, 'css-d4v849'))
-                )
-                title_input.clear()
-                human_type(title_input, obj['title']['en'])  # Simulate human typing
-                logging.info("Title input filled successfully")
-            except Exception as e:
-                logging.error(f"Failed to fill title input: {str(e)}")
-                raise
-
-            # Fill Description Textarea
-            try:
-                description_area = WebDriverWait(driver, 15).until(
-                    EC.visibility_of_element_located((By.CSS_SELECTOR, 'textarea.css-1ccau2i'))
-                )
-                description_area.clear()
-                human_type(description_area, obj['description']['en'])  # Simulate human typing
-                logging.info("Description textarea filled successfully")
-            except Exception as e:
-                logging.error(f"Failed to fill description textarea: {str(e)}")
-                raise
-
-            # --- Auth Section ---
-            try:
-                # Click Auth Button
-                auth_button = WebDriverWait(driver, 15).until(
-                    EC.element_to_be_clickable((By.XPATH, 
-                        '//button[.//div[contains(translate(text(), "AUTH", "auth"), "auth")]]'))
-                )
-                ActionChains(driver).move_to_element(auth_button).pause(0.5).click().perform()
-                logging.info("Clicked 'Auth' button successfully")
-            except Exception as e:
-                logging.error(f"Failed to click 'Auth' button: {str(e)}")
-                raise
-
-            # Click Bearer Button
-            try:
-                bearer_button = WebDriverWait(driver, 15).until(
-                    EC.element_to_be_clickable((By.XPATH, 
-                        '//button[.//div[contains(translate(text(), "BEARER", "bearer"), "bearer")]]'))
-                )
-                ActionChains(driver).move_to_element(bearer_button).pause(0.5).click().perform()
-                logging.info("Clicked 'Bearer' button successfully")
-            except Exception as e:
-                logging.error(f"Failed to click 'Bearer' button: {str(e)}")
-                raise
-
-            # Fill Token Input
-            try:
-                token_input = WebDriverWait(driver, 15).until(
-                    EC.visibility_of_element_located((By.CSS_SELECTOR, '.css-sf4iut .css-kpahiq p'))
-                )
-                driver.execute_script("arguments[0].innerText = ''", token_input)
-                human_type(token_input, jwt_token)  # Simulate human typing
-                logging.info("Token input filled successfully")
-            except Exception as e:
-                logging.error(f"Failed to fill token input: {str(e)}")
-                raise
-
-            # --- Sync Section ---
-            try:
-                sync_button = WebDriverWait(driver, 15).until(
-                    EC.element_to_be_clickable((By.CLASS_NAME, 'css-1rxme48'))
-                )
-                ActionChains(driver).move_to_element(sync_button).pause(0.5).click().perform()
-                logging.info("Clicked 'Sync' button successfully")
+                //let endpointElement = findEndpointInContext(document) || searchInShadowDOM(document.body);
+                let endpointElement = false;
                 
-                # Wait for sync with dynamic check instead of static sleep
+                if (!endpointElement) {
+                    console.log("Checking iframes for endpoint input");
+                    const iframes = document.querySelectorAll('iframe');
+                    for (const iframe of iframes) {
+                        try {
+                            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                            endpointElement = findEndpointInContext(iframeDoc) || searchInShadowDOM(iframeDoc.body);
+                            if (endpointElement) break;
+                        } catch(e) { console.log("Iframe error:", e); }
+                    }
+                }
+                
+                if (endpointElement) {
+                    endpointElement.focus();
+                    endpointElement.innerHTML = '';
+                    return endpointElement;
+                }
+                return null;
+                """.replace("%SHARED_SHADOW_DOM_IFRAME_LOGIC%", SHARED_SHADOW_DOM_IFRAME_LOGIC)
+
+                endpoint_element = driver.execute_script(endpoint_js)
+                if endpoint_element:
+                    human_type(endpoint_element, f'https://api.dz.com/api/{obj["slug"]}')
+                    logging.info("Endpoint input filled via JS injection")
+                else:
+                    raise Exception("Endpoint input not found")
+
+            except Exception as e:
+                logging.error(f"Endpoint JS error: {str(e)}")
+                raise
+
+            # --- Description Button JS Injection ---
+            try:
+                desc_button_js = """
+                function findDescButtonInContext(context) {
+                    const xpath = "//button[.//div[contains(translate(text(), 'DESCRIPTION', 'description'), 'description')]]";
+                    const result = document.evaluate(xpath, context, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                    const button = result.singleNodeValue;
+                    if (button) {
+                        console.log("Found description button");
+                        button.style.border = '3px solid #00ff00';
+                        button.style.boxShadow = '0 0 10px rgba(0,255,0,0.5)';
+                        return button;
+                    }
+                    return null;
+                }
+
+                %SHARED_SHADOW_DOM_IFRAME_LOGIC%
+
+                //let descButton = findDescButtonInContext(document) || searchInShadowDOM(document.body);
+                let descButton = false;
+
+                if (!descButton) {
+                    const iframes = document.querySelectorAll('iframe');
+                    for (const iframe of iframes) {
+                        try {
+                            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                            descButton = findDescButtonInContext(iframeDoc) || searchInShadowDOM(iframeDoc.body);
+                            if (descButton) break;
+                        } catch(e) { console.log("Iframe error:", e); }
+                    }
+                }
+
+                if (descButton) {
+                    descButton.click();
+                    return true;
+                }
+                return false;
+                """.replace("%SHARED_SHADOW_DOM_IFRAME_LOGIC%", SHARED_SHADOW_DOM_IFRAME_LOGIC)
+
+                driver.execute_script(desc_button_js)
+                logging.info("Description button clicked via JS")
+                human_like_delay(1, 2)
+
+            except Exception as e:
+                logging.error(f"Description button JS error: {str(e)}")
+                raise
+
+            # --- Title Input JS Injection ---
+            try:
+                title_js = """
+                function findTitleInputInContext(context) {
+                    const input = context.querySelector('.css-d4v849');
+                    if (input) {
+                        console.log("Found title input");
+                        input.style.border = '3px solid #00ff00';
+                        input.style.boxShadow = '0 0 5px rgba(0,255,0,0.3)';
+                        return input;
+                    }
+                    return null;
+                }
+
+                %SHARED_SHADOW_DOM_IFRAME_LOGIC%
+
+                //let titleInput = findTitleInputInContext(document) || searchInShadowDOM(document.body);
+                let titleInput = false;
+
+                if (!titleInput) {
+                    const iframes = document.querySelectorAll('iframe');
+                    for (const iframe of iframes) {
+                        try {
+                            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                            titleInput = findTitleInputInContext(iframeDoc) || searchInShadowDOM(iframeDoc.body);
+                            if (titleInput) break;
+                        } catch(e) { console.log("Iframe error:", e); }
+                    }
+                }
+
+                if (titleInput) {
+                    titleInput.focus();
+                    titleInput.value = '';
+                    return titleInput;
+                }
+                return null;
+                """.replace("%SHARED_SHADOW_DOM_IFRAME_LOGIC%", SHARED_SHADOW_DOM_IFRAME_LOGIC)
+
+                title_element = driver.execute_script(title_js)
+                if title_element:
+                    human_type(title_element, obj['title']['en'])
+                    logging.info("Title input filled via JS")
+                else:
+                    raise Exception("Title input not found")
+
+            except Exception as e:
+                logging.error(f"Title input JS error: {str(e)}")
+                raise
+
+            # --- Auth Section JS Injections ---
+            # Auth Button
+            try:
+                auth_button_js = """
+                function findAuthButtonInContext(context) {
+                    const xpath = "//button[.//div[contains(translate(text(), 'AUTH', 'auth'), 'auth')]]";
+                    const result = document.evaluate(xpath, context, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                    const button = result.singleNodeValue;
+                    if (button) {
+                        console.log("Found auth button");
+                        button.style.border = '3px solid #00ff00';
+                        return button;
+                    }
+                    return null;
+                }
+
+                %SHARED_SHADOW_DOM_IFRAME_LOGIC%
+
+                //let authButton = findAuthButtonInContext(document) || searchInShadowDOM(document.body);
+                let authButton = false;
+
+                if (!authButton) {
+                    const iframes = document.querySelectorAll('iframe');
+                    for (const iframe of iframes) {
+                        try {
+                            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                            authButton = findAuthButtonInContext(iframeDoc) || searchInShadowDOM(iframeDoc.body);
+                            if (authButton) break;
+                        } catch(e) { console.log("Iframe error:", e); }
+                    }
+                }
+
+                if (authButton) {
+                    authButton.click();
+                    return true;
+                }
+                return false;
+                """.replace("%SHARED_SHADOW_DOM_IFRAME_LOGIC%", SHARED_SHADOW_DOM_IFRAME_LOGIC)
+
+                driver.execute_script(auth_button_js)
+                logging.info("Auth button clicked via JS")
+                human_like_delay(1, 2)
+
+            except Exception as e:
+                logging.error(f"Auth button JS error: {str(e)}")
+                raise
+
+            # Bearer Button
+            try:
+                bearer_button_js = """
+                function findBearerButtonInContext(context) {
+                    const xpath = "//button[.//div[contains(translate(text(), 'BEARER', 'bearer'), 'bearer')]]";
+                    const result = document.evaluate(xpath, context, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                    const button = result.singleNodeValue;
+                    if (button) {
+                        console.log("Found bearer button");
+                        button.style.border = '3px solid #00ff00';
+                        return button;
+                    }
+                    return null;
+                }
+
+                %SHARED_SHADOW_DOM_IFRAME_LOGIC%
+
+                //let bearerButton = findBearerButtonInContext(document) || searchInShadowDOM(document.body);
+                let bearerButton = false;
+
+                if (!bearerButton) {
+                    const iframes = document.querySelectorAll('iframe');
+                    for (const iframe of iframes) {
+                        try {
+                            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                            bearerButton = findBearerButtonInContext(iframeDoc) || searchInShadowDOM(iframeDoc.body);
+                            if (bearerButton) break;
+                        } catch(e) { console.log("Iframe error:", e); }
+                    }
+                }
+
+                if (bearerButton) {
+                    bearerButton.click();
+                    return true;
+                }
+                return false;
+                """.replace("%SHARED_SHADOW_DOM_IFRAME_LOGIC%", SHARED_SHADOW_DOM_IFRAME_LOGIC)
+
+                driver.execute_script(bearer_button_js)
+                logging.info("Bearer button clicked via JS")
+                human_like_delay(1, 2)
+
+            except Exception as e:
+                logging.error(f"Bearer button JS error: {str(e)}")
+                raise
+
+            # --- Token Input JS Injection ---
+            try:
+                token_js = """
+                function findTokenInputInContext(context) {
+                    const tokenP = context.querySelector('.css-sf4iut .css-kpahiq p');
+                    if (tokenP) {
+                        console.log("Found token input");
+                        tokenP.style.border = '3px solid #00ff00';
+                        return tokenP;
+                    }
+                    return null;
+                }
+
+                %SHARED_SHADOW_DOM_IFRAME_LOGIC%
+
+                //let tokenElement = findTokenInputInContext(document) || searchInShadowDOM(document.body);
+                let tokenElement = false;
+
+                if (!tokenElement) {
+                    const iframes = document.querySelectorAll('iframe');
+                    for (const iframe of iframes) {
+                        try {
+                            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                            tokenElement = findTokenInputInContext(iframeDoc) || searchInShadowDOM(iframeDoc.body);
+                            if (tokenElement) break;
+                        } catch(e) { console.log("Iframe error:", e); }
+                    }
+                }
+
+                if (tokenElement) {
+                    tokenElement.focus();
+                    tokenElement.innerHTML = '';
+                    return tokenElement;
+                }
+                return null;
+                """.replace("%SHARED_SHADOW_DOM_IFRAME_LOGIC%", SHARED_SHADOW_DOM_IFRAME_LOGIC)
+
+                token_element = driver.execute_script(token_js)
+                if token_element:
+                    human_type(token_element, jwt_token)
+                    logging.info("Token input filled via JS")
+                else:
+                    raise Exception("Token input not found")
+
+            except Exception as e:
+                logging.error(f"Token input JS error: {str(e)}")
+                raise
+
+            # --- Sync Button JS Injection ---
+            try:
+                sync_js = """
+                function findSyncButtonInContext(context) {
+                    const button = context.querySelector('.css-1rxme48');
+                    if (button) {
+                        console.log("Found sync button");
+                        button.style.border = '3px solid #00ff00';
+                        return button;
+                    }
+                    return null;
+                }
+
+                %SHARED_SHADOW_DOM_IFRAME_LOGIC%
+
+                //let syncButton = findSyncButtonInContext(document) || searchInShadowDOM(document.body);
+                let syncButton = false;
+
+                if (!syncButton) {
+                    const iframes = document.querySelectorAll('iframe');
+                    for (const iframe of iframes) {
+                        try {
+                            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                            syncButton = findSyncButtonInContext(iframeDoc) || searchInShadowDOM(iframeDoc.body);
+                            if (syncButton) break;
+                        } catch(e) { console.log("Iframe error:", e); }
+                    }
+                }
+
+                if (syncButton) {
+                    syncButton.click();
+                    return true;
+                }
+                return false;
+                """.replace("%SHARED_SHADOW_DOM_IFRAME_LOGIC%", SHARED_SHADOW_DOM_IFRAME_LOGIC)
+
+                driver.execute_script(sync_js)
+                logging.info("Sync button clicked via JS")
+                
+                # Wait for sync using Python-side check
                 WebDriverWait(driver, 10).until(
                     lambda d: "sync complete" in d.page_source.lower() or 
                             "success" in d.page_source.lower()
                 )
                 logging.info("Sync completed successfully")
+
             except Exception as e:
-                logging.error(f"Failed to complete sync: {str(e)}")
+                logging.error(f"Sync JS error: {str(e)}")
                 raise
 
             return True
