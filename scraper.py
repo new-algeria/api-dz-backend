@@ -5,15 +5,20 @@ import time
 import random
 import paramiko
 import logging
-from argparse import ArgumentParser
-from urllib.parse import urlparse
 from pathlib import Path
+from dotenv import load_dotenv
+from urllib.parse import urlparse
+from argparse import ArgumentParser
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.keys import Keys
+
+# Load environment variables
+load_dotenv()
+load_dotenv('.env.local', override=True)  # Override with local settings if present
 
 # Configure logging (unchanged)
 logging.basicConfig(
@@ -880,7 +885,8 @@ def main():
             options.add_argument('--disable-blink-features=AutomationControlled') # Try to hide automation
             options.add_argument('--window-size=1920,1080')
             options.add_argument('--disable-dev-shm-usage')
-            # options.add_argument('--headless=new') # Keep non-headless for debugging
+            if os.getenv('HEADLESS', 'true').lower() == 'true':
+                options.add_argument('--headless=new') # Keep non-headless for debugging
             # options.add_argument('--start-maximized')
             # options.add_argument('--disable-gpu')
             # options.add_argument('--no-sandbox')
