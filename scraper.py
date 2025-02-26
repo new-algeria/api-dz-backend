@@ -259,51 +259,91 @@ def process_object(driver, obj, jwt_token):
             try:
                 human_like_delay(1, 2)
                 endpoint_js = """
-                function findEndpointInContext(context) {
-                    const endpointDiv = context.querySelector('div.e10vnnfs0.css-1dxvcps[contenteditable="true"]');
-                    if (endpointDiv) {
-                        console.log("Found endpoint contenteditable div");
-                        endpointDiv.style.border = '3px solid #00ff00';
-                        endpointDiv.style.boxShadow = '0 0 10px rgba(0,255,0,0.5)';
-                        return endpointDiv;
+                function setEndpointValue(targetElement, value) {
+                    targetElement.focus();
+                    targetElement.innerHTML = '';
+                    
+                    // For contenteditable elements
+                    const range = document.createRange();
+                    const selection = window.getSelection();
+                    range.selectNodeContents(targetElement);
+                    range.collapse(false);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                    
+                    const textNode = document.createTextNode(value);
+                    targetElement.appendChild(textNode);
+                    
+                    // Trigger necessary events
+                    const inputEvent = new Event('input', { bubbles: true, cancelable: true });
+                    const changeEvent = new Event('change', { bubbles: true });
+                    targetElement.dispatchEvent(inputEvent);
+                    targetElement.dispatchEvent(changeEvent);
+                }
+
+                function searchShadowDOM(root) {
+                    const allElements = root.querySelectorAll('*');
+                    for (let el of allElements) {
+                        if (el.shadowRoot) {
+                            const result = searchShadowDOM(el.shadowRoot);
+                            if (result) return result;
+                        }
                     }
                     return null;
                 }
 
-                %SHARED_SHADOW_DOM_IFRAME_LOGIC%
-
-                //let endpointElement = findEndpointInContext(document) || searchInShadowDOM(document.body);
-                let endpointElement = false;
-                
-                if (!endpointElement) {
-                    console.log("Checking iframes for endpoint input");
-                    const iframes = document.querySelectorAll('iframe');
-                    for (const iframe of iframes) {
-                        try {
-                            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                            endpointElement = findEndpointInContext(iframeDoc) || searchInShadowDOM(iframeDoc.body);
-                            if (endpointElement) break;
-                        } catch(e) { console.log("Iframe error:", e); }
+                function searchFrames() {
+                    // Try main document first
+                    let editor = document.querySelector('div[contenteditable="true"]');
+                    if (editor) return { element: editor, context: document };
+                    
+                    // Search shadow DOM
+                    const shadowElement = searchShadowDOM(document.body);
+                    if (shadowElement) {
+                        editor = shadowElement.querySelector('div[contenteditable="true"]');
+                        if (editor) return { element: editor, context: shadowElement };
                     }
+
+                    // Check accessible iframes
+                    const frames = document.querySelectorAll('iframe');
+                    for (const frame of frames) {
+                        try {
+                            const frameDoc = frame.contentDocument || frame.contentWindow.document;
+                            editor = frameDoc.querySelector('div[contenteditable="true"]');
+                            if (editor) return { element: editor, context: frameDoc };
+                            
+                            // Search shadow DOM in iframe
+                            const frameShadow = searchShadowDOM(frameDoc.body);
+                            if (frameShadow) {
+                                editor = frameShadow.querySelector('div[contenteditable="true"]');
+                                if (editor) return { element: editor, context: frameShadow };
+                            }
+                        } catch(e) { continue; }
+                    }
+                    return null;
                 }
-                
-                if (endpointElement) {
-                    endpointElement.focus();
-                    endpointElement.innerHTML = '';
-                    return endpointElement;
+
+                const result = searchFrames();
+                if (result) {
+                    setEndpointValue(result.element, '%URL%');
+                    return {
+                        success: true,
+                        message: "endpoint filled successfully"
+                    };
                 }
                 return null;
-                """.replace("%SHARED_SHADOW_DOM_IFRAME_LOGIC%", SHARED_SHADOW_DOM_IFRAME_LOGIC)
+                """.replace('%URL%', f'https://api.dz.com/api/{obj["slug"]}')
 
-                endpoint_element = driver.execute_script(endpoint_js)
-                if endpoint_element:
-                    human_type(endpoint_element, f'https://api.dz.com/api/{obj["slug"]}')
+                # Execute the full script
+                success = driver.execute_script(endpoint_js)
+                if result and result.get('success'):
                     logging.info("Endpoint input filled via JS injection")
                 else:
                     raise Exception("Endpoint input not found")
 
             except Exception as e:
                 logging.error(f"Endpoint JS error: {str(e)}")
+                driver.save_screenshot("endpoint_error.png")
                 raise
 
             # --- Description Button JS Injection ---
@@ -356,50 +396,196 @@ def process_object(driver, obj, jwt_token):
             # --- Title Input JS Injection ---
             try:
                 title_js = """
-                function findTitleInputInContext(context) {
-                    const input = context.querySelector('.css-d4v849');
-                    if (input) {
-                        console.log("Found title input");
-                        input.style.border = '3px solid #00ff00';
-                        input.style.boxShadow = '0 0 5px rgba(0,255,0,0.3)';
-                        return input;
+                function setTitleValue(targetElement, value) {
+                    targetElement.focus();
+                    targetElement.value = '';
+                    
+                    // Set value directly for normal inputs
+                    targetElement.value = '%TITLE%';
+                    
+                    // Trigger input events
+                    const inputEvent = new Event('input', { bubbles: true, cancelable: true });
+                    const changeEvent = new Event('change', { bubbles: true });
+                    targetElement.dispatchEvent(inputEvent);
+                    targetElement.dispatchEvent(changeEvent);
+                    
+                    // Special handling for React controlled components
+                    const reactKey = Object.keys(targetElement).find(k => k.startsWith('__reactProps'));
+                    if (reactKey) {
+                        const reactHandler = targetElement[reactKey].onChange;
+                        if (typeof reactHandler === 'function') {
+                            reactHandler({ target: targetElement });
+                        }
+                    }
+                }
+
+                function searchShadowDOM(root) {
+                    const allElements = root.querySelectorAll('*');
+                    for (let el of allElements) {
+                        if (el.shadowRoot) {
+                            const result = searchShadowDOM(el.shadowRoot);
+                            if (result) return result;
+                        }
+                        if (el.matches('.css-d4v849, input[type="text"][aria-label*="Title"], input.title-field')) {
+                            return el;
+                        }
                     }
                     return null;
                 }
 
-                %SHARED_SHADOW_DOM_IFRAME_LOGIC%
-
-                //let titleInput = findTitleInputInContext(document) || searchInShadowDOM(document.body);
-                let titleInput = false;
-
-                if (!titleInput) {
-                    const iframes = document.querySelectorAll('iframe');
-                    for (const iframe of iframes) {
-                        try {
-                            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                            titleInput = findTitleInputInContext(iframeDoc) || searchInShadowDOM(iframeDoc.body);
-                            if (titleInput) break;
-                        } catch(e) { console.log("Iframe error:", e); }
+                function searchFrames() {
+                    // Try main document first
+                    let titleInput = document.querySelector('.css-d4v849, input[type="text"][aria-label*="Title"], input.title-field');
+                    if (titleInput) return { element: titleInput, context: document };
+                    
+                    // Search shadow DOM
+                    const shadowElement = searchShadowDOM(document.body);
+                    if (shadowElement) {
+                        titleInput = shadowElement.matches('input') ? shadowElement : shadowElement.querySelector('input');
+                        if (titleInput) return { element: titleInput, context: shadowElement };
                     }
+
+                    // Check accessible iframes
+                    const frames = document.querySelectorAll('iframe');
+                    for (const frame of frames) {
+                        try {
+                            const frameDoc = frame.contentDocument || frame.contentWindow.document;
+                            titleInput = frameDoc.querySelector('.css-d4v849, input[type="text"][aria-label*="Title"], input.title-field');
+                            if (titleInput) return { element: titleInput, context: frameDoc };
+                            
+                            // Search shadow DOM in iframe
+                            const frameShadow = searchShadowDOM(frameDoc.body);
+                            if (frameShadow) {
+                                titleInput = frameShadow.matches('input') ? frameShadow : frameShadow.querySelector('input');
+                                if (titleInput) return { element: titleInput, context: frameShadow };
+                            }
+                        } catch(e) { continue; }
+                    }
+                    return null;
                 }
 
-                if (titleInput) {
-                    titleInput.focus();
-                    titleInput.value = '';
-                    return titleInput;
+                const result = searchFrames();
+                if (result) {
+                    setTitleValue(result.element, '%TITLE%');
+                    return {
+                        success: true,
+                        message: "title filled successfully",
+                        element: result.element.tagName
+                    };
                 }
-                return null;
-                """.replace("%SHARED_SHADOW_DOM_IFRAME_LOGIC%", SHARED_SHADOW_DOM_IFRAME_LOGIC)
+                return {
+                    success: false,
+                    message: "title input not found"
+                };
+                """.replace('%TITLE%', json.dumps(obj['title']['en'])[1:-1])
 
-                title_element = driver.execute_script(title_js)
-                if title_element:
-                    human_type(title_element, obj['title']['en'])
-                    logging.info("Title input filled via JS")
+                print(f'{obj['title']['en']}')
+                # Execute the full script
+                result = driver.execute_script(title_js)
+                if result and result['success']:
+                    logging.info(f"Title input filled: {result['message']}")
                 else:
-                    raise Exception("Title input not found")
+                    raise Exception(f"Title input failed: {result.get('message', 'Unknown error') if result else 'No result'}")
 
             except Exception as e:
                 logging.error(f"Title input JS error: {str(e)}")
+                raise
+
+            # --- Description Input JS Injection ---
+            try:
+                description_js = """
+                function setDescriptionValue(targetElement, value) {
+                    targetElement.focus();
+                    targetElement.value = '';
+
+                    // Set value directly for normal textareas
+                    targetElement.value = '%DESCRIPTION%';
+
+                    // Trigger input events
+                    const inputEvent = new Event('input', { bubbles: true, cancelable: true });
+                    const changeEvent = new Event('change', { bubbles: true });
+                    targetElement.dispatchEvent(inputEvent);
+                    targetElement.dispatchEvent(changeEvent);
+
+                    // Special handling for React controlled components
+                    const reactKey = Object.keys(targetElement).find(k => k.startsWith('__reactProps'));
+                    if (reactKey) {
+                        const reactHandler = targetElement[reactKey].onChange;
+                        if (typeof reactHandler === 'function') {
+                            reactHandler({ target: targetElement });
+                        }
+                    }
+                }
+
+                function searchShadowDOM(root) {
+                    const allElements = root.querySelectorAll('*');
+                    for (let el of allElements) {
+                        if (el.shadowRoot) {
+                            const result = searchShadowDOM(el.shadowRoot);
+                            if (result) return result;
+                        }
+                        if (el.matches('textarea[aria-label*="Editor content"]')) {
+                            return el;
+                        }
+                    }
+                    return null;
+                }
+
+                function searchFrames() {
+                    // Try main document first
+                    let descriptionTextarea = document.querySelector('textarea[aria-label*="Editor content"]');
+                    if (descriptionTextarea) return { element: descriptionTextarea, context: document };
+
+                    // Search shadow DOM
+                    const shadowElement = searchShadowDOM(document.body);
+                    if (shadowElement) {
+                        descriptionTextarea = shadowElement.matches('textarea') ? shadowElement : shadowElement.querySelector('textarea');
+                        if (descriptionTextarea) return { element: descriptionTextarea, context: shadowElement };
+                    }
+
+                    // Check accessible iframes
+                    const frames = document.querySelectorAll('iframe');
+                    for (const frame of frames) {
+                        try {
+                            const frameDoc = frame.contentDocument || frame.contentWindow.document;
+                            descriptionTextarea = frameDoc.querySelector('textarea[aria-label*="Editor content"]');
+                            if (descriptionTextarea) return { element: descriptionTextarea, context: frameDoc };
+
+                            // Search shadow DOM in iframe
+                            const frameShadow = searchShadowDOM(frameDoc.body);
+                            if (frameShadow) {
+                                descriptionTextarea = frameShadow.matches('textarea') ? frameShadow : frameShadow.querySelector('textarea');
+                                if (descriptionTextarea) return { element: descriptionTextarea, context: frameShadow };
+                            }
+                        } catch(e) { continue; }
+                    }
+                    return null;
+                }
+
+                const result = searchFrames();
+                if (result) {
+                    setDescriptionValue(result.element, '%DESCRIPTION%');
+                    return {
+                        success: true,
+                        message: "description filled successfully",
+                        element: result.element.tagName
+                    };
+                }
+                return {
+                    success: false,
+                    message: "description textarea not found"
+                };
+                """.replace('%DESCRIPTION%', json.dumps(obj['description']['en'])[1:-1])
+
+                print(f"{obj['description']['en']}")
+                # Execute the full script
+                result = driver.execute_script(description_js)
+                if result and result['success']:
+                    logging.info(f"Description input filled: {result['message']}")
+                else:
+                    raise Exception(f"Description input failed: {result.get('message', 'Unknown error') if result else 'No result'}")
+            except Exception as e:
+                logging.error(f"Description input JS error: {str(e)}")
                 raise
 
             # --- Auth Section JS Injections ---
@@ -498,47 +684,104 @@ def process_object(driver, obj, jwt_token):
             # --- Token Input JS Injection ---
             try:
                 token_js = """
-                function findTokenInputInContext(context) {
-                    const tokenP = context.querySelector('.css-sf4iut .css-kpahiq p');
-                    if (tokenP) {
-                        console.log("Found token input");
-                        tokenP.style.border = '3px solid #00ff00';
-                        return tokenP;
+                function setTokenValue(targetElement, value) {
+                    targetElement.focus();
+                    targetElement.innerHTML = '';
+                    
+                    // For contenteditable elements
+                    const range = document.createRange();
+                    const selection = window.getSelection();
+                    range.selectNodeContents(targetElement);
+                    range.collapse(false);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                    
+                    const textNode = document.createTextNode(value);
+                    targetElement.appendChild(textNode);
+                    
+                    // Trigger necessary events
+                    const inputEvent = new Event('input', { bubbles: true, cancelable: true });
+                    const changeEvent = new Event('change', { bubbles: true });
+                    targetElement.dispatchEvent(inputEvent);
+                    targetElement.dispatchEvent(changeEvent);
+
+                    // Handle React internal state
+                    const reactKey = Object.keys(targetElement).find(k => k.startsWith('__reactProps'));
+                    if (reactKey) {
+                        const reactHandler = targetElement[reactKey].onChange;
+                        if (typeof reactHandler === 'function') {
+                            reactHandler({ target: targetElement });
+                        }
+                    }
+                }
+
+                function searchShadowDOM(root) {
+                    const allElements = root.querySelectorAll('*');
+                    for (let el of allElements) {
+                        if (el.shadowRoot) {
+                            const result = searchShadowDOM(el.shadowRoot);
+                            if (result) return result;
+                        }
+                        if (el.matches('.css-sf4iut .css-kpahiq p, [data-testid="token-input"], p[contenteditable="true"]')) {
+                            return el;
+                        }
                     }
                     return null;
                 }
 
-                %SHARED_SHADOW_DOM_IFRAME_LOGIC%
-
-                //let tokenElement = findTokenInputInContext(document) || searchInShadowDOM(document.body);
-                let tokenElement = false;
-
-                if (!tokenElement) {
-                    const iframes = document.querySelectorAll('iframe');
-                    for (const iframe of iframes) {
-                        try {
-                            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                            tokenElement = findTokenInputInContext(iframeDoc) || searchInShadowDOM(iframeDoc.body);
-                            if (tokenElement) break;
-                        } catch(e) { console.log("Iframe error:", e); }
+                function searchFrames() {
+                    // Try main document first
+                    let tokenElement = document.querySelector('.css-sf4iut .css-kpahiq p, [data-testid="token-input"], p[contenteditable="true"]');
+                    if (tokenElement) return { element: tokenElement, context: document };
+                    
+                    // Search shadow DOM
+                    const shadowElement = searchShadowDOM(document.body);
+                    if (shadowElement) {
+                        tokenElement = shadowElement.matches('p') ? shadowElement : shadowElement.querySelector('p');
+                        if (tokenElement) return { element: tokenElement, context: shadowElement };
                     }
+
+                    // Check accessible iframes
+                    const frames = document.querySelectorAll('iframe');
+                    for (const frame of frames) {
+                        try {
+                            const frameDoc = frame.contentDocument || frame.contentWindow.document;
+                            tokenElement = frameDoc.querySelector('.css-sf4iut .css-kpahiq p, [data-testid="token-input"], p[contenteditable="true"]');
+                            if (tokenElement) return { element: tokenElement, context: frameDoc };
+                            
+                            // Search shadow DOM in iframe
+                            const frameShadow = searchShadowDOM(frameDoc.body);
+                            if (frameShadow) {
+                                tokenElement = frameShadow.matches('p') ? frameShadow : frameShadow.querySelector('p');
+                                if (tokenElement) return { element: tokenElement, context: frameShadow };
+                            }
+                        } catch(e) { continue; }
+                    }
+                    return null;
                 }
 
-                if (tokenElement) {
-                    tokenElement.focus();
-                    tokenElement.innerHTML = '';
-                    return tokenElement;
+                const result = searchFrames();
+                if (result) {
+                    setTokenValue(result.element, '%TOKEN%');
+                    return {
+                        success: true,
+                        message: "token filled successfully",
+                        elementType: result.element.tagName
+                    };
                 }
-                return null;
-                """.replace("%SHARED_SHADOW_DOM_IFRAME_LOGIC%", SHARED_SHADOW_DOM_IFRAME_LOGIC)
+                return {
+                    success: false,
+                    message: "token input not found"
+                };
+                """.replace('%TOKEN%', jwt_token)
 
-                token_element = driver.execute_script(token_js)
-                if token_element:
-                    human_type(token_element, jwt_token)
-                    logging.info("Token input filled via JS")
+                # Execute the full script
+                result = driver.execute_script(token_js)
+                if result and result['success']:
+                    logging.info(f"Token input filled: {result['message']}")
                 else:
-                    raise Exception("Token input not found")
-
+                    raise Exception(f"Token input failed: {result.get('message', 'Unknown error') if result else 'No result'}")
+            
             except Exception as e:
                 logging.error(f"Token input JS error: {str(e)}")
                 raise
