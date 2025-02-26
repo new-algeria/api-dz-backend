@@ -396,12 +396,14 @@ def process_object(driver, obj, jwt_token):
             # --- Title Input JS Injection ---
             try:
                 title_js = """
+                var title = arguments[0];
+
                 function setTitleValue(targetElement, value) {
                     targetElement.focus();
                     targetElement.value = '';
                     
                     // Set value directly for normal inputs
-                    targetElement.value = '%TITLE%';
+                    targetElement.value = value;
                     
                     // Trigger input events
                     const inputEvent = new Event('input', { bubbles: true, cancelable: true });
@@ -466,7 +468,7 @@ def process_object(driver, obj, jwt_token):
 
                 const result = searchFrames();
                 if (result) {
-                    setTitleValue(result.element, '%TITLE%');
+                    setTitleValue(result.element, title);
                     return {
                         success: true,
                         message: "title filled successfully",
@@ -477,11 +479,11 @@ def process_object(driver, obj, jwt_token):
                     success: false,
                     message: "title input not found"
                 };
-                """.replace('%TITLE%', json.dumps(obj['title']['en'])[1:-1])
+                """
 
                 print(f'{obj['title']['en']}')
-                # Execute the full script
-                result = driver.execute_script(title_js)
+                # Execute the script, passing the title as an argument
+                result = driver.execute_script(title_js, obj['title']['en'])
                 if result and result['success']:
                     logging.info(f"Title input filled: {result['message']}")
                 else:
@@ -494,19 +496,21 @@ def process_object(driver, obj, jwt_token):
             # --- Description Input JS Injection ---
             try:
                 description_js = """
+                var description = arguments[0];
+
                 function setDescriptionValue(targetElement, value) {
                     targetElement.focus();
                     targetElement.value = '';
-
+                    
                     // Set value directly for normal textareas
-                    targetElement.value = '%DESCRIPTION%';
-
+                    targetElement.value = value;
+                    
                     // Trigger input events
                     const inputEvent = new Event('input', { bubbles: true, cancelable: true });
                     const changeEvent = new Event('change', { bubbles: true });
                     targetElement.dispatchEvent(inputEvent);
                     targetElement.dispatchEvent(changeEvent);
-
+                    
                     // Special handling for React controlled components
                     const reactKey = Object.keys(targetElement).find(k => k.startsWith('__reactProps'));
                     if (reactKey) {
@@ -535,7 +539,7 @@ def process_object(driver, obj, jwt_token):
                     // Try main document first
                     let descriptionTextarea = document.querySelector('textarea[aria-label*="Editor content"]');
                     if (descriptionTextarea) return { element: descriptionTextarea, context: document };
-
+                    
                     // Search shadow DOM
                     const shadowElement = searchShadowDOM(document.body);
                     if (shadowElement) {
@@ -550,7 +554,7 @@ def process_object(driver, obj, jwt_token):
                             const frameDoc = frame.contentDocument || frame.contentWindow.document;
                             descriptionTextarea = frameDoc.querySelector('textarea[aria-label*="Editor content"]');
                             if (descriptionTextarea) return { element: descriptionTextarea, context: frameDoc };
-
+                            
                             // Search shadow DOM in iframe
                             const frameShadow = searchShadowDOM(frameDoc.body);
                             if (frameShadow) {
@@ -564,7 +568,7 @@ def process_object(driver, obj, jwt_token):
 
                 const result = searchFrames();
                 if (result) {
-                    setDescriptionValue(result.element, '%DESCRIPTION%');
+                    setDescriptionValue(result.element, description);
                     return {
                         success: true,
                         message: "description filled successfully",
@@ -575,11 +579,11 @@ def process_object(driver, obj, jwt_token):
                     success: false,
                     message: "description textarea not found"
                 };
-                """.replace('%DESCRIPTION%', json.dumps(obj['description']['en'])[1:-1])
+                """
 
                 print(f"{obj['description']['en']}")
-                # Execute the full script
-                result = driver.execute_script(description_js)
+                # Execute the script, passing the description as an argument
+                result = driver.execute_script(description_js, obj['description']['en'])
                 if result and result['success']:
                     logging.info(f"Description input filled: {result['message']}")
                 else:
