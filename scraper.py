@@ -38,7 +38,7 @@ class SFTPManager:
         self.port = parsed.port or 22
         self.user = parsed.username
         self.pwd = parsed.password
-        self.base_path = parsed.path  # Preserve leading slash
+        self.base_path = Path(parsed.path)
 
         self.transport = paramiko.Transport((self.host, self.port))
         self.transport.connect(username=self.user, password=self.pwd)
@@ -70,7 +70,8 @@ class SFTPManager:
             json.dump(data, f, indent=2)
         
         try:
-            self.sftp.put(temp_file, str(self.base_path / filename))
+            remote_path = os.path.join(self.base_path, filename)
+            self.sftp.put(temp_file, str(remote_path))
             Path(temp_file).unlink()
         finally:
             if Path(temp_file).exists():
