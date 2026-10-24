@@ -70,6 +70,9 @@ describe("neutraliserFormule", () => {
     expect(neutraliserFormule("=SUM(A1)")).toBe("'=SUM(A1)");
     expect(neutraliserFormule("@cmd")).toBe("'@cmd");
     expect(neutraliserFormule("-cmd|' /C calc'!A0")).toBe("'-cmd|' /C calc'!A0");
+    // Un chiffre après le signe ne suffit pas à rendre la cellule sûre.
+    expect(neutraliserFormule("-2+3+cmd|' /C calc'!A0")).toBe("'-2+3+cmd|' /C calc'!A0");
+    expect(neutraliserFormule('+1+HYPERLINK("http://x")')).toBe('\'+1+HYPERLINK("http://x")');
   });
 
   it("garde intacts téléphones et nombres négatifs", () => {

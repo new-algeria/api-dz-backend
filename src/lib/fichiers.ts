@@ -9,6 +9,12 @@ import { texteMultilingue } from "./textes.js";
 export const DUREE_LIEN = 600;
 
 const FORMATS_SOURCE: FormatSource[] = ["geojson", "json", "csv"];
+
+/**
+ * Au-delà, pas de conversion ni de lecture dans la fonction (mémoire et durée limitées sur Vercel) :
+ * seul le format d'origine reste téléchargeable. Le plus gros fichier actuel pèse 15 Mo.
+ */
+export const TAILLE_MAX_CONVERSION = 60 * 1024 * 1024;
 const TYPES_NATIFS: Record<string, string> = { ...TYPES_CONTENU, xml: "application/xml", zip: "application/zip", pdf: "application/pdf" };
 
 async function fichiersDe(slug: string, nom?: string) {
@@ -56,15 +62,21 @@ export async function lienTelechargement(slug: string, format: FormatSortie, nom
   if (natif) return lienSigne(natif.cle_stockage, options);
 
   const source = sourcePourConversion(versions);
-  const cleExport = `exports/${empreinte(source)}/${nomCible}.${format}`;
+  if ((source.taille_octets ?? 0) > TAILLE_MAX_CONVERSION) {
+    throw new ErreurApi(413, "too_large_to_convert", `Fichier trop volumineux pour être converti : téléchargez-le en ${source.format.toUpperCase()}.`);
+  }
+  const metadonnees = {
+    titre: texteMultilingue(fiche.titre),
+    source: (fiche.sources as { nom?: string } | null)?.nom ?? null,
+    licence: [fiche.licence_code, fiche.licence_details].filter(Boolean).join(" — ") || null,
+    urlFiche: `${URL_SITE}/datasets/${slug}`,
+  };
+  // Une donnée et ses métadonnées (reprises dans la feuille « about » du XLSX) font partie de la clé :
+  // deux données au fichier identique n'échangent pas leurs exports, et une correction de titre les renouvelle.
+  const version = createHash("sha256").update(`${empreinte(source)}:${JSON.stringify(metadonnees)}`).digest("hex").slice(0, 20);
+  const cleExport = `exports/${slug}/${version}/${nomCible}.${format}`;
   if (!(await infosObjet(cleExport))) {
-    const table = await lireSource(source);
-    const contenu = convertir(table, format, {
-      titre: texteMultilingue(fiche.titre),
-      source: (fiche.sources as { nom?: string } | null)?.nom ?? null,
-      licence: [fiche.licence_code, fiche.licence_details].filter(Boolean).join(" — ") || null,
-      urlFiche: `${URL_SITE}/datasets/${slug}`,
-    });
+    const contenu = convertir(await lireSource(source), format, metadonnees);
     await ecrireObjet(cleExport, contenu, TYPES_CONTENU[format], "private, max-age=31536000, immutable");
   }
   return lienSigne(cleExport, options);
@@ -79,6 +91,9 @@ const TAILLE_CACHE = 4;
 export async function lireTableDonnee(slug: string, nom?: string) {
   const { nom: nomCible, versions } = await fichiersDe(slug, nom);
   const source = sourcePourConversion(versions);
+  if ((source.taille_octets ?? 0) > TAILLE_MAX_CONVERSION) {
+    throw new ErreurApi(413, "too_large", "Fichier trop volumineux pour être lu par l'API : utilisez /download dans son format d'origine.");
+  }
   const cle = empreinte(source);
   let entree = cacheTables.get(cle);
   if (!entree) {

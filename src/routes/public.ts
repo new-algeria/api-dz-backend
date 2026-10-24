@@ -26,7 +26,8 @@ routesPubliques.use("/v1/datasets/:slug/download", limiteDebit("telechargement")
 routesPubliques.use("/v1/datasets/:slug/data", limiteDebit("donnees"));
 routesPubliques.use("/v1/datasets/:slug/sample", limiteDebit("donnees"));
 routesPubliques.use("/v1/*", async (c, next) => {
-  if (/^\/v1\/datasets\/[^/]+\/(download|data|sample)$/.test(c.req.path)) return next();
+  // Routes à limite propre, et administration (limitée dans routes/admin.ts) : pas de double comptage.
+  if (/^\/v1\/admin\//.test(c.req.path) || /^\/v1\/datasets\/[^/]+\/(download|data|sample)$/.test(c.req.path)) return next();
   return limiteDebit("lecture")(c, next);
 });
 
@@ -138,7 +139,7 @@ routesPubliques.openapi(
     if (champs) page = page.map((ligne) => Object.fromEntries(champs.filter((champ) => champ in ligne).map((champ) => [champ, ligne[champ]])));
 
     const corps = { fichier: nom, colonnes: champs ?? colonnesDe(lignes.slice(0, 1000)), data: page, pagination: { offset, limit, total } };
-    if (JSON.stringify(corps).length > TAILLE_MAX_REPONSE) {
+    if (Buffer.byteLength(JSON.stringify(corps)) > TAILLE_MAX_REPONSE) {
       throw new ErreurApi(413, "response_too_large", "Réponse trop volumineuse : réduisez `limit`, choisissez des `fields` ou utilisez `/download`.");
     }
     mettreEnCache(c, "donnees");

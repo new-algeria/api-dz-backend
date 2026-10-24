@@ -12,7 +12,7 @@ import { ErreurApi } from "../lib/erreurs.js";
 export const LIMITES = {
   lecture: { requetes: 120, fenetre: 60 },
   donnees: { requetes: 30, fenetre: 60 },
-  telechargement: { requetes: 20, fenetre: 60 },
+  telechargement: { requetes: 30, fenetre: 60 },
   admin: { requetes: 60, fenetre: 60 },
 } as const;
 
@@ -89,12 +89,26 @@ export function adresseClient(c: Context): string {
   );
 }
 
+/**
+ * Clé de comptage : l'adresse IPv4, ou le préfixe /64 d'une adresse IPv6 (un seul abonné dispose
+ * souvent de tout un /64 et pourrait sinon changer d'adresse à chaque requête).
+ */
+export function cleLimite(adresse: string): string {
+  if (!adresse.includes(":")) return adresse;
+  const [debut, fin = ""] = adresse.toLowerCase().split("::");
+  const groupesDebut = debut ? debut.split(":") : [];
+  const groupesFin = fin ? fin.split(":") : [];
+  const zeros = Array(Math.max(0, 8 - groupesDebut.length - groupesFin.length)).fill("0");
+  const groupes = adresse.includes("::") ? [...groupesDebut, ...zeros, ...groupesFin] : groupesDebut;
+  return `${groupes.slice(0, 4).map((groupe) => groupe.replace(/^0+(?=.)/, "")).join(":")}::/64`;
+}
+
 export function limiteDebit(famille: FamilleLimite): MiddlewareHandler {
   return async (c, next) => {
     const { fenetre } = LIMITES[famille];
     let verdict: Verdict;
     try {
-      verdict = await limiteurPour(famille)(adresseClient(c));
+      verdict = await limiteurPour(famille)(cleLimite(adresseClient(c)));
     } catch (erreur) {
       // Redis indisponible : on laisse passer plutôt que de couper l'API (le WAF Vercel reste devant).
       console.error("limite-debit: limiteur indisponible", erreur);

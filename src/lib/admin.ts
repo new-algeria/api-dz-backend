@@ -179,25 +179,25 @@ export async function publierVersion(
     throw new ErreurApi(400, "invalid_files", "Exactement un fichier doit être principal.");
   }
 
-  const analyses = await Promise.all(
-    fichiers.map(async (fichier) => {
-      if (!fichier.cle.startsWith(prefixeDonnee(slug))) {
-        throw new ErreurApi(400, "invalid_files", `Clé hors du dossier de la donnée : ${fichier.cle}.`);
-      }
-      const infos = await infosObjet(fichier.cle);
-      if (!infos) throw new ErreurApi(400, "invalid_files", `Fichier non envoyé : ${fichier.nom}.${fichier.format}.`);
-      if (infos.taille > TAILLE_MAX_FICHIER) throw new ErreurApi(413, "file_too_large", `${fichier.nom} dépasse 100 Mo.`);
-      const reponse = await lireObjet(fichier.cle);
-      const texte = await reponse!.text();
-      const table = lireTable(texte, fichier.format);
-      return {
-        fichier,
-        taille: infos.taille,
-        sha256: createHash("sha256").update(texte).digest("hex"),
-        description: fichier.principal ? decrireTable(table) : null,
-      };
-    })
-  );
+  // Un fichier à la fois : jusqu'à 30 fichiers de 100 Mo ne tiendraient pas en mémoire ensemble.
+  const analyses = [];
+  for (const fichier of fichiers) {
+    if (!fichier.cle.startsWith(prefixeDonnee(slug))) {
+      throw new ErreurApi(400, "invalid_files", `Clé hors du dossier de la donnée : ${fichier.cle}.`);
+    }
+    const infos = await infosObjet(fichier.cle);
+    if (!infos) throw new ErreurApi(400, "invalid_files", `Fichier non envoyé : ${fichier.nom}.${fichier.format}.`);
+    if (infos.taille > TAILLE_MAX_FICHIER) throw new ErreurApi(413, "file_too_large", `${fichier.nom} dépasse 100 Mo.`);
+    const reponse = await lireObjet(fichier.cle);
+    const texte = await reponse!.text();
+    const table = lireTable(texte, fichier.format);
+    analyses.push({
+      fichier,
+      taille: infos.taille,
+      sha256: createHash("sha256").update(texte).digest("hex"),
+      description: fichier.principal ? decrireTable(table) : null,
+    });
+  }
   const principal = analyses.find((analyse) => analyse.fichier.principal)!.description!;
 
   const { data: courante } = await supabaseAdmin()

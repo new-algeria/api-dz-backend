@@ -87,11 +87,30 @@ describe("API", () => {
   it("limite le débit par IP avec les en-têtes RateLimit", async () => {
     const ip = { "x-real-ip": "198.51.100.42" };
     let derniere: Response | undefined;
-    for (let i = 0; i < 21; i++) derniere = await requete("/v1/datasets/sante/download?format=exe", { headers: ip });
+    for (let i = 0; i < 31; i++) derniere = await requete("/v1/datasets/sante/download?format=exe", { headers: ip });
     expect(derniere!.status).toBe(429);
     expect(derniere!.headers.get("retry-after")).toBeTruthy();
-    expect(derniere!.headers.get("ratelimit-policy")).toBe("20;w=60");
+    expect(derniere!.headers.get("ratelimit-policy")).toBe("30;w=60");
     // Une autre IP n'est pas touchée.
     expect((await requete("/v1/datasets/sante/download?format=exe", { headers: { "x-real-ip": "198.51.100.43" } })).status).toBe(400);
+  });
+});
+
+describe("cleLimite", async () => {
+  const { cleLimite } = await import("../src/middleware/limite-debit.js");
+  it("garde une IPv4 telle quelle", () => {
+    expect(cleLimite("203.0.113.7")).toBe("203.0.113.7");
+  });
+  it("regroupe une IPv6 par /64, forme compressée ou non", () => {
+    expect(cleLimite("2001:db8:1:2:aaaa:bbbb:cccc:dddd")).toBe("2001:db8:1:2::/64");
+    expect(cleLimite("2001:0db8:0001:0002::1")).toBe("2001:db8:1:2::/64");
+    expect(cleLimite("2001:db8::1")).toBe("2001:db8:0:0::/64");
+  });
+});
+
+describe("OpenAPI", () => {
+  it("met la spécification en cache", async () => {
+    const reponse = await requete("/openapi.json");
+    expect(reponse.headers.get("cdn-cache-control")).toContain("max-age=3600");
   });
 });

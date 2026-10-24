@@ -151,11 +151,13 @@ function valeurCellule(valeur: unknown): string | number | boolean | null {
 
 /**
  * Neutralise l'injection de formules (OWASP « CSV injection ») sans abîmer les numéros de téléphone :
- * `=`, `@`, tabulation et retour chariot toujours ; `+` / `-` seulement s'ils ne précèdent pas un nombre.
+ * tout texte qui commence par `=`, `+`, `-`, `@`, tabulation ou retour chariot est préfixé d'une apostrophe,
+ * sauf un nombre ou un téléphone « pur » (chiffres, espaces, points, parenthèses : `+213 21 00 00 00`, `-0.29`).
  */
 export function neutraliserFormule(texte: string): string {
-  if (/^[=@\t\r]/.test(texte) || /^[+-](?![\d\s.]|$)/.test(texte)) return `'${texte}`;
-  return texte;
+  if (!/^[=+\-@\t\r]/.test(texte)) return texte;
+  if (/^[+-][\d\s().]+$/.test(texte)) return texte;
+  return `'${texte}`;
 }
 
 export function enCsv(table: Table): string {

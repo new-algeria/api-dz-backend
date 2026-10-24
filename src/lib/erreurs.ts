@@ -18,6 +18,15 @@ export class ErreurApi extends Error {
 
 export const introuvable = (quoi = "Ressource") => new ErreurApi(404, "not_found", `${quoi} introuvable.`);
 
+/**
+ * Erreur Supabase (objet simple, pas une instance d'`Error` : Hono ne la passerait pas à `onError`).
+ * Le détail part dans les logs, le client reçoit un 502 générique.
+ */
+export function erreurSupabase(erreur: { message?: string; code?: string }): ErreurApi {
+  console.error("supabase:", erreur.code, erreur.message);
+  return new ErreurApi(502, "database_error", "Base de données indisponible. Réessayez plus tard.");
+}
+
 export function reponseProbleme(c: Context, erreur: ErreurApi) {
   return c.json(
     {

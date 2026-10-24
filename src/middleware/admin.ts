@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { createMiddleware } from "hono/factory";
 import { lireConfig } from "../config.js";
-import { ErreurApi } from "../lib/erreurs.js";
+import { ErreurApi, erreurSupabase } from "../lib/erreurs.js";
 import { supabaseAdmin, supabasePublic } from "../lib/supabase.js";
 import type { EnvApp } from "../types.js";
 
@@ -36,7 +36,7 @@ export const exigerAdmin = createMiddleware<EnvApp>(async (c, next) => {
     .select("role")
     .eq("id", data.user.id)
     .maybeSingle();
-  if (erreurProfil) throw erreurProfil;
+  if (erreurProfil) throw erreurSupabase(erreurProfil);
   if (profil?.role !== "admin") throw new ErreurApi(403, "forbidden", "Réservé aux administrateurs.");
 
   c.set("acteur", { type: "admin", id: data.user.id });

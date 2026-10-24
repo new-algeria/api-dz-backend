@@ -1,6 +1,7 @@
 import type { PostgrestError } from "@supabase/supabase-js";
 import { lireConfig } from "../config.js";
 import { FORMATS_SORTIE, type FormatSortie } from "./conversion.js";
+import { erreurSupabase } from "./erreurs.js";
 import { supabasePublic } from "./supabase.js";
 
 export const URL_SITE = "https://data-dz.com";
@@ -51,11 +52,11 @@ async function avecIllustration<T>(
   if (illustrationDisponible) {
     const resultat = await executer(`illustration_url, ${colonnes}`);
     if (!resultat.error) return resultat.data;
-    if (resultat.error.code !== "42703") throw resultat.error;
+    if (resultat.error.code !== "42703") throw erreurSupabase(resultat.error);
     illustrationDisponible = false;
   }
   const resultat = await executer(colonnes);
-  if (resultat.error) throw resultat.error;
+  if (resultat.error) throw erreurSupabase(resultat.error);
   return resultat.data;
 }
 
@@ -198,7 +199,7 @@ export function versFiche(ligne: LigneFiche, fichiers: FichierInterne[]) {
 
 export async function listerCategories() {
   const { data, error } = await supabasePublic().from("categories").select("slug, nom, icone, ordre").order("ordre");
-  if (error) throw error;
+  if (error) throw erreurSupabase(error);
   return data ?? [];
 }
 
@@ -207,13 +208,13 @@ export async function listerLicences() {
     .from("licences")
     .select("code, nom, url, usage_commercial, attribution_requise, partage_identique")
     .order("nom");
-  if (error) throw error;
+  if (error) throw erreurSupabase(error);
   return data ?? [];
 }
 
 export async function listerSources() {
   const { data, error } = await supabasePublic().from("sources").select("slug, nom, url, type, verifiee, description").order("nom");
-  if (error) throw error;
+  if (error) throw erreurSupabase(error);
   return data ?? [];
 }
 
@@ -225,8 +226,8 @@ export async function chargerStatistiques() {
       .eq("statut", "publie"),
     supabasePublic().from("profils").select("id", { count: "exact", head: true }),
   ]);
-  if (error) throw error;
-  if (membres.error) throw membres.error;
+  if (error) throw erreurSupabase(error);
+  if (membres.error) throw erreurSupabase(membres.error);
   const lignes = (data ?? []) as unknown as { categorie_slug: string | null; versions: { nb_lignes: number | null } | null }[];
   return {
     nb_donnees: lignes.length,

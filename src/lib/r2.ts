@@ -1,5 +1,6 @@
 import { AwsClient } from "aws4fetch";
 import { lireConfig } from "../config.js";
+import { ErreurApi } from "./erreurs.js";
 
 /**
  * Accès au bucket R2 par l'API S3 (jamais par le domaine public).
@@ -29,7 +30,7 @@ function urlObjet(cle: string): URL {
 /** Refuse toute clé qui tenterait de sortir du bucket ou de viser un dossier inattendu. */
 export function verifierCle(cle: string): string {
   if (!/^[a-z0-9][a-z0-9._/-]{0,250}$/i.test(cle) || cle.includes("..") || cle.includes("//")) {
-    throw new Error(`Clé de stockage refusée : ${cle}`);
+    throw new ErreurApi(400, "invalid_key", "Clé de stockage invalide.");
   }
   return cle;
 }

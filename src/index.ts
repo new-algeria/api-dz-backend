@@ -82,6 +82,11 @@ app.get("/health", (c) => {
 app.route("/", routesPubliques);
 app.route("/", routesAdmin);
 
+// Avant doc31 : son gestionnaire ne passe pas la main, un middleware déclaré après ne s'exécuterait jamais.
+app.use("/openapi.json", async (c, next) => {
+  await next();
+  mettreEnCache(c, "documentation");
+});
 app.doc31("/openapi.json", (c) => ({
   openapi: "3.1.0",
   info: {
@@ -101,10 +106,6 @@ app.doc31("/openapi.json", (c) => ({
     { name: "Administration", description: "Réservé aux administrateurs de data-dz et au script de synchronisation" },
   ],
 }));
-app.use("/openapi.json", async (c, next) => {
-  await next();
-  mettreEnCache(c, "documentation");
-});
 app.get("/docs", Scalar({ url: "/openapi.json", pageTitle: "API data-dz" }));
 
 app.notFound((c) => reponseProbleme(c, new ErreurApi(404, "not_found", "Route inconnue. Voir /docs.")));

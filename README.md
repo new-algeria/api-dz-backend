@@ -31,7 +31,7 @@ npm run typecheck
 | `GET /v1/datasets/:slug` | Fiche : métadonnées, version, colonnes, aperçu, `ressources` (fichiers et liens) | 15 s | 120/min |
 | `GET /v1/datasets/:slug/data?file=&offset=&limit=&fields=&wilaya=&geometry=none\|wkt` | Enregistrements en JSON paginé (≤ 1000, ≤ 4 Mo) | 30 min | 30/min |
 | `GET /v1/datasets/:slug/sample?file=&n=&random=` | Échantillon | 30 min | 30/min |
-| `GET /v1/datasets/:slug/download?format=csv\|xlsx\|json\|geojson&file=&inline=` | 302 vers un lien R2 signé (10 min) | 60 s | 20/min |
+| `GET /v1/datasets/:slug/download?format=csv\|xlsx\|json\|geojson&file=&inline=` | 302 vers un lien R2 signé (10 min) | 60 s | 30/min |
 | `GET /v1/categories`, `/v1/licences`, `/v1/sources`, `/v1/stats` | Référentiels | 1 h | 120/min |
 | `/v1/admin/*` | Administration (voir plus bas) | aucun | 60/min |
 
