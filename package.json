@@ -1,42 +1,35 @@
 {
-  "name": "express-api-data-dz",
-  "description": "Express API for Data DZ",
-  "version": "1.0.0",
-  "main": "app.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node app.js",
-    "dev": "nodemon app.js",
-    "rapidapi:update": "node scripts/update-rapidapi.js",
-    "rapidapi:create": "ACTION_TYPE=create node scripts/update-rapidapi.js",
-    "sync:data": "node scripts/sync-remote-data-descriptions.js",
-    "check:remote": "node scripts/check-remote-data-changes.js",
-    "docs:generate": "redocly build-docs openapi.json --output docs/index.html",
-    "validate:openapi": "swagger-parser validate openapi.json",
-    "test:config": "bash scripts/test-configuration.sh"
+  "name": "data-dz-api",
+  "description": "API publique de data-dz (api.data-dz.com) : catalogue, données, conversions et téléchargements signés",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "22.x"
   },
-  "keywords": [],
-  "author": "",
-  "license": "",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=.env src/dev.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
   "dependencies": {
-    "@trycourier/courier": "^6.3.1",
-    "axios": "^1.7.9",
-    "cheerio": "^1.0.0",
-    "cookie-parser": "^1.4.7",
-    "cors": "^2.8.5",
-    "@dr.pogodin/csurf": "^1.16.5",
-    "csv-parse": "^5.5.0",
-    "dotenv": "^16.4.7",
-    "express": "^4.21.2",
-    "form-data": "^4.0.0",
-    "jsonwebtoken": "^9.0.2",
-    "ssh2-sftp-client": "^12.0.1",
-    "xlsx": "https://git.sheetjs.com/sheetjs/sheetjs.git",
-    "xml2js": "^0.6.2"
+    "@hono/zod-openapi": "^1.6.3",
+    "@scalar/hono-api-reference": "^0.9.48",
+    "@supabase/supabase-js": "^2.109.0",
+    "@upstash/ratelimit": "^2.2.0",
+    "@upstash/redis": "^1.39.0",
+    "aws4fetch": "^1.0.20",
+    "hono": "^4.13.13",
+    "papaparse": "^5.7.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@apidevtools/swagger-parser": "^10.1.0",
-    "nodemon": "^3.0.0",
-    "@redocly/cli": "^1.16.5"
+    "@hono/node-server": "^1.19.0",
+    "@types/node": "^22.10.0",
+    "@types/papaparse": "^5.3.15",
+    "tsx": "^4.23.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.12"
   }
 }
