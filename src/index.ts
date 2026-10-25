@@ -1,5 +1,7 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
+// Import direct de "hono" : Vercel s'en sert pour détecter le point d'entrée (preset Hono).
+import type { Hono } from "hono";
 import { cors } from "hono/cors";
 import { etag } from "hono/etag";
 import { HTTPException } from "hono/http-exception";
@@ -118,4 +120,4 @@ app.onError((erreur, c) => {
   return reponseProbleme(c, new ErreurApi(500, "internal_error", "Erreur interne. Réessayez plus tard."));
 });
 
-export default app;
+export default app satisfies Hono<EnvApp>;
