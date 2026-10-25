@@ -46,7 +46,7 @@ routesPubliques.openapi(
     description: "Recherche plein texte, filtres et pagination. Les données masquées ou en brouillon n'apparaissent jamais.",
     request: {
       query: z.object({
-        q: z.string().trim().max(200).optional().openapi({ description: "Recherche plein texte (titre, description, mots-clés)", example: "pharmacie" }),
+        q: z.string().trim().max(200).optional().openapi({ description: "Recherche : chaque mot (pluriel accepté) doit commencer un mot du titre, de la description ou des mots-clés, ou figurer dans le titre ou la description (fr, en, ar)", example: "pharmacie" }),
         category: z.string().regex(/^[a-z0-9-]{1,60}$/).optional().openapi({ example: "sante" }),
         source: z.string().regex(/^[a-z0-9-]{1,60}$/).optional().openapi({ example: "geoalgeria" }),
         wilaya: z.string().regex(/^\d{2}$/).optional().openapi({ description: "Code de wilaya (01 à 69)", example: "16" }),

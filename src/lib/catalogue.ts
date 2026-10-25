@@ -2,6 +2,7 @@ import type { PostgrestError } from "@supabase/supabase-js";
 import { lireConfig } from "../config.js";
 import { FORMATS_SORTIE, type FormatSortie } from "./conversion.js";
 import { erreurSupabase } from "./erreurs.js";
+import { filtresRecherche } from "./recherche.js";
 import { supabasePublic } from "./supabase.js";
 
 export const URL_SITE = "https://data-dz.com";
@@ -100,7 +101,7 @@ export async function listerDonnees(filtres: FiltresCatalogue) {
   const debut = (filtres.page - 1) * filtres.limit;
   const { lignes, total } = await avecIllustration(COLONNES_RESUME, async (select) => {
     let requete = supabasePublic().from("datasets").select(select, { count: "exact" }).eq("statut", "publie");
-    if (filtres.q) requete = requete.textSearch("recherche", filtres.q, { config: "simple", type: "websearch" });
+    for (const filtre of filtresRecherche(filtres.q ?? "")) requete = requete.or(filtre);
     if (filtres.category) requete = requete.eq("categorie_slug", filtres.category);
     if (filtres.wilaya) requete = requete.contains("wilayas", [filtres.wilaya]);
     if (filtres.source) {
