@@ -41,7 +41,16 @@ export function lireConfig(): Config {
   // Une variable vide vaut « absente » (évite qu'un `FOO=` du .env casse la validation).
   for (const [nom, valeur] of Object.entries(env)) if (valeur === "") delete env[nom];
 
-  const resultat = schemaEnv.safeParse(env);
+  let resultat = schemaEnv.safeParse(env);
+  // Une variable facultative invalide ne doit pas couper toute l'API : on l'ignore (fonction désactivée) et on le signale.
+  const invalidesFacultatives = new Set(
+    (resultat.error?.issues ?? []).map((probleme) => String(probleme.path[0])).filter((nom) => schemaEnv.shape[nom as keyof typeof schemaEnv.shape]?.safeParse(undefined).success)
+  );
+  if (invalidesFacultatives.size) {
+    console.warn(`Configuration : variable(s) facultative(s) invalide(s) ignorée(s) : ${[...invalidesFacultatives].join(", ")}`);
+    for (const nom of invalidesFacultatives) delete env[nom];
+    resultat = schemaEnv.safeParse(env);
+  }
   if (!resultat.success) {
     const champs = resultat.error.issues.map((probleme) => probleme.path.join(".")).join(", ");
     throw new Error(`Configuration invalide ou incomplète : ${champs}`);
