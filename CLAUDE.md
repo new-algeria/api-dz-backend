@@ -5,6 +5,7 @@ Le front est le dépôt `data-dz` (React) ; ce dépôt remplace l'ancienne API E
 Référence complète des routes, de la mise en production et du script de synchronisation : `README.md`.
 
 Commandes : `npm run dev` (Node 22, `.env` copié de `.env.example`), `npm test`, `npm run typecheck`.
+Node 22 obligatoire, y compris en local : sous Node 20, supabase-js plante à la création du client (WebSocket natif absent).
 
 ## Règles
 - **Aucun secret dans le dépôt.** `.env*` est ignoré sauf `.env.example`. La clé secrète Supabase ne sert que dans `supabaseAdmin()`, après `exigerAdmin`.
@@ -15,3 +16,7 @@ Commandes : `npm run dev` (Node 22, `.env` copié de `.env.example`), `npm test`
 - Paramètres validés par zod dans `createRoute` ; une nouvelle route publique doit être documentée (OpenAPI) et testée dans `test/app.test.ts` si elle a une logique propre.
 - Réponses < 4 Mo (limite Vercel 4,5 Mo) : au-delà, passer par un lien signé.
 - Noms métier en français (`listerDonnees`, `lienTelechargement`), routes et champs d'URL en anglais, comme le front.
+- Erreur de base : `erreurBase()` (admin) et `erreurSupabase()` (public) écrivent toujours le code Postgres dans les logs Vercel ; dans `erreurBase()`, 42703 (colonne inconnue = migration non appliquée) répond 503 `schema_outdated`. Une colonne ajoutée par une migration récente se lit avec `avecIllustration()` (ou un repli équivalent) tant que la migration peut manquer.
+
+## Tests (à étendre)
+Vitest couvre la conversion, la validation des paramètres, la limite de débit et quelques erreurs. À prévoir : routes publiques et admin avec un Supabase et un R2 simulés (liste, fiche, `/data`, `/download`, création, version, illustration), et un contrôle du schéma de la base cible (chaque colonne lue par l'API existe) avant chaque déploiement.
