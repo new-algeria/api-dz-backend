@@ -4,6 +4,7 @@ import type { Acteur } from "../types.js";
 import { avecIllustration } from "./catalogue.js";
 import { decrireTable, lireTable, type FormatSource } from "./conversion.js";
 import { ErreurApi, introuvable } from "./erreurs.js";
+import { filtresRecherche } from "./recherche.js";
 import { ecrireObjet, infosObjet, lienEnvoiSigne, lireObjet, supprimerObjet, urlPublique } from "./r2.js";
 import { supabaseAdmin } from "./supabase.js";
 
@@ -38,7 +39,7 @@ export async function listerDonneesAdmin(recherche?: string, statut?: Statut) {
   return avecIllustration(COLONNES_ADMIN, async (colonnes) => {
     let requete = supabaseAdmin().from("datasets").select(colonnes).order("mis_a_jour_le", { ascending: false });
     if (statut) requete = requete.eq("statut", statut);
-    if (recherche) requete = requete.textSearch("recherche", recherche, { config: "simple", type: "websearch" });
+    for (const filtre of filtresRecherche(recherche ?? "")) requete = requete.or(filtre);
     const { data, error } = await requete;
     return { data: (data ?? []) as unknown as Record<string, unknown>[], error };
   });
