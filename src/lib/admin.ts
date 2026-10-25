@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { PostgrestError } from "@supabase/supabase-js";
 import type { Acteur } from "../types.js";
+import { avecIllustration } from "./catalogue.js";
 import { decrireTable, lireTable, type FormatSource } from "./conversion.js";
 import { ErreurApi, introuvable } from "./erreurs.js";
 import { ecrireObjet, infosObjet, lienEnvoiSigne, lireObjet, supprimerObjet, urlPublique } from "./r2.js";
@@ -16,29 +17,38 @@ export function erreurBase(erreur: PostgrestError): ErreurApi {
   if (erreur.code === "23514" || erreur.code === "23502" || erreur.code === "22P02") {
     return new ErreurApi(400, "constraint_violation", "Valeur refusée par la base.", erreur.message);
   }
+  // Sans ce log, une erreur de schéma (ex. 42703 : colonne absente, migration non appliquée) serait invisible.
+  console.error("supabase:", erreur.code, erreur.message);
+  if (erreur.code === "42703") {
+    return new ErreurApi(503, "schema_outdated", "La base n'est pas à jour : une migration Supabase reste à appliquer.");
+  }
   return new ErreurApi(502, "database_error", "Erreur de la base de données.");
 }
 
+// `illustration_url` est ajoutée par `avecIllustration` (absente tant que la migration 20261025000009 n'est pas appliquée).
 const COLONNES_ADMIN = `
   id, slug, titre, description, readme, statut, categorie_slug, licence_code, licence_details, url_source,
-  mots_cles, wilayas, frequence_maj, infos_source, illustration_url, cree_le, mis_a_jour_le, publie_le,
+  mots_cles, wilayas, frequence_maj, infos_source, cree_le, mis_a_jour_le, publie_le,
   score, nb_votes_pour, nb_votes_contre, nb_favoris, nb_commentaires,
   sources ( slug, nom, type ),
   versions!datasets_version_courante_fk ( numero, nb_lignes, publie_le, fichiers ( nom, format, principal, taille_octets ) )
 `;
 
 export async function listerDonneesAdmin(recherche?: string, statut?: Statut) {
-  let requete = supabaseAdmin().from("datasets").select(COLONNES_ADMIN).order("mis_a_jour_le", { ascending: false });
-  if (statut) requete = requete.eq("statut", statut);
-  if (recherche) requete = requete.textSearch("recherche", recherche, { config: "simple", type: "websearch" });
-  const { data, error } = await requete;
-  if (error) throw erreurBase(error);
-  return data ?? [];
+  return avecIllustration(COLONNES_ADMIN, async (colonnes) => {
+    let requete = supabaseAdmin().from("datasets").select(colonnes).order("mis_a_jour_le", { ascending: false });
+    if (statut) requete = requete.eq("statut", statut);
+    if (recherche) requete = requete.textSearch("recherche", recherche, { config: "simple", type: "websearch" });
+    const { data, error } = await requete;
+    return { data: (data ?? []) as unknown as Record<string, unknown>[], error };
+  });
 }
 
 async function donneeParSlug(slug: string) {
-  const { data, error } = await supabaseAdmin().from("datasets").select(COLONNES_ADMIN).eq("slug", slug).maybeSingle();
-  if (error) throw erreurBase(error);
+  const data = await avecIllustration(COLONNES_ADMIN, async (colonnes) => {
+    const { data, error } = await supabaseAdmin().from("datasets").select(colonnes).eq("slug", slug).maybeSingle();
+    return { data: data as unknown, error };
+  });
   return data as (Record<string, unknown> & { id: string; slug: string; statut: Statut; illustration_url: string | null }) | null;
 }
 

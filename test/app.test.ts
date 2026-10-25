@@ -108,6 +108,17 @@ describe("cleLimite", async () => {
   });
 });
 
+describe("erreurBase", async () => {
+  const { erreurBase } = await import("../src/lib/admin.js");
+  const erreur = (code: string) => ({ code, message: "", details: "", hint: "", name: "PostgrestError" }) as Parameters<typeof erreurBase>[0];
+  it("signale une migration manquante (colonne inconnue) au lieu d'un 502 opaque", () => {
+    expect(erreurBase(erreur("42703"))).toMatchObject({ statut: 503, code: "schema_outdated" });
+  });
+  it("traduit un slug en double en conflit", () => {
+    expect(erreurBase(erreur("23505"))).toMatchObject({ statut: 409, code: "conflict" });
+  });
+});
+
 describe("OpenAPI", () => {
   it("met la spécification en cache", async () => {
     const reponse = await requete("/openapi.json");

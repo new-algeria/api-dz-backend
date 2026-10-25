@@ -45,7 +45,7 @@ const COLONNES_FICHE = `
  */
 let illustrationDisponible = true;
 
-async function avecIllustration<T>(
+export async function avecIllustration<T>(
   colonnes: string,
   executer: (select: string) => PromiseLike<{ data: T; error: PostgrestError | null }>
 ): Promise<T> {
