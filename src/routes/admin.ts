@@ -4,6 +4,7 @@ import {
   chargerDonneeAdmin,
   creerDonnee,
   creerSource,
+  disponibiliteSlug,
   enregistrerDonnee,
   enregistrerIllustration,
   FORMATS_ENVOI,
@@ -12,6 +13,7 @@ import {
   modifierDonnee,
   preparerEnvoi,
   publierVersion,
+  renommerDonnee,
   retirerIllustration,
   STATUTS,
   supprimerDonnee,
@@ -183,6 +185,65 @@ routesAdmin.openapi(
   async (c) => {
     await supprimerDonnee(c.req.valid("param").slug, c.req.valid("query").files);
     return c.body(null, 204);
+  }
+);
+
+// ---------------------------------------------------------------- Identifiant
+
+routesAdmin.openapi(
+  createRoute({
+    method: "get",
+    path: "/v1/admin/slugs/{slug}",
+    tags: ["Administration"],
+    summary: "Un identifiant est-il libre ?",
+    description: "`utilise_par` : la donnée qui le porte, ou qui l'a porté (`ancien_identifiant`, ses anciens liens y redirigent).",
+    security: securite,
+    request: { params: ParamsSlug },
+    responses: {
+      ...ok(
+        z.object({ slug: z.string(), disponible: z.boolean(), utilise_par: z.string().nullable(), ancien_identifiant: z.boolean() }),
+        "Disponibilité"
+      ),
+      ...reponsesErreur(400, 401, 403),
+    },
+  }),
+  async (c) => c.json(await disponibiliteSlug(c.req.valid("param").slug), 200)
+);
+
+routesAdmin.openapi(
+  createRoute({
+    method: "post",
+    path: "/v1/admin/datasets/{slug}/rename",
+    tags: ["Administration"],
+    summary: "Changer l'identifiant d'une donnée",
+    description:
+      "L'ancien identifiant est gardé (`anciens_slugs`) : la fiche, `/data`, `/sample` et `/download` y redirigent (307), et les liens des notifications sont réécrits. " +
+      "409 `slug_taken` si l'identifiant est pris (ou est l'ancien identifiant d'une autre donnée), 409 `synchronized_source` pour une donnée synchronisée. " +
+      "`redirection: false` tant que la migration 20261029000010 n'est pas appliquée.",
+    security: securite,
+    request: {
+      params: ParamsSlug,
+      body: {
+        content: {
+          "application/json": {
+            schema: z.object({
+              slug: Slug,
+              illustration_actuelle: z
+                .url({ protocol: /^https$/ })
+                .max(500)
+                .optional()
+                .openapi({ description: "Image par défaut affichée par le site (pack `web-assets/`), gardée si aucune illustration n'est choisie." }),
+            }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: { ...ok(z.object({ donnee: Donnee, redirection: z.boolean() }), "Donnée renommée"), ...reponsesErreur(400, 401, 403, 404, 409) },
+  }),
+  async (c) => {
+    const { slug, illustration_actuelle } = c.req.valid("json");
+    return c.json(await renommerDonnee(c.req.valid("param").slug, slug, illustration_actuelle), 200);
   }
 );
 

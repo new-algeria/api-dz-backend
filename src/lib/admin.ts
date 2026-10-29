@@ -136,7 +136,8 @@ export async function slugLibre(table: "datasets" | "sources", base: string): Pr
 }
 
 /** Préfixe R2 propre à une donnée : les fichiers envoyés par l'API ne sont jamais partagés entre données. */
-export const prefixeDonnee = (slug: string) => `datasets/${slug}/`;
+const PREFIXE_DONNEES = "datasets/";
+export const prefixeDonnee = (slug: string) => `${PREFIXE_DONNEES}${slug}/`;
 
 export async function supprimerDonnee(slug: string, supprimerFichiers: boolean) {
   const donnee = await chargerDonneeAdmin(slug);
@@ -144,7 +145,9 @@ export async function supprimerDonnee(slug: string, supprimerFichiers: boolean) 
   if (supprimerFichiers) {
     const { data: versions } = await supabaseAdmin().from("versions").select("fichiers ( cle_stockage )").eq("dataset_id", donnee.id);
     for (const version of (versions ?? []) as { fichiers: { cle_stockage: string }[] }[]) {
-      for (const fichier of version.fichiers) if (fichier.cle_stockage.startsWith(prefixeDonnee(slug))) cles.push(fichier.cle_stockage);
+      // `datasets/` et pas `datasets/<slug>/` : après un renommage, les anciens fichiers restent sous l'ancien identifiant.
+      // Les fichiers synchronisés (`json/`, `geojson/`), partagés, ne sont jamais supprimés.
+      for (const fichier of version.fichiers) if (fichier.cle_stockage.startsWith(PREFIXE_DONNEES)) cles.push(fichier.cle_stockage);
     }
   }
   const { error } = await supabaseAdmin().from("datasets").delete().eq("id", donnee.id);
@@ -157,6 +160,91 @@ export async function supprimerDonnee(slug: string, supprimerFichiers: boolean) 
   if (donnee.illustration_url) cles.push(...cleIllustration(donnee.illustration_url));
   // Nettoyage au mieux : la donnée est déjà supprimée, un fichier orphelin n'est pas bloquant.
   await Promise.allSettled(cles.map(supprimerObjet));
+}
+
+// ---------------------------------------------------------------- Identifiant (slug)
+
+/**
+ * Données qui utilisent `slug` : comme identifiant actuel, ou comme ancien identifiant redirigé
+ * (`anciens_slugs`, migration 20261029000010 ; ignoré tant qu'elle n'est pas appliquée).
+ */
+async function usageSlug(slug: string): Promise<{ actuel: string | null; ancien: string | null }> {
+  const { data: actuelle, error } = await supabaseAdmin().from("datasets").select("slug").eq("slug", slug).maybeSingle();
+  if (error) throw erreurBase(error);
+  const { data: ancienne, error: erreurAncien } = await supabaseAdmin()
+    .from("datasets")
+    .select("slug")
+    .contains("anciens_slugs", [slug])
+    .limit(1)
+    .maybeSingle();
+  if (erreurAncien && erreurAncien.code !== "42703") throw erreurBase(erreurAncien);
+  return { actuel: (actuelle?.slug as string | undefined) ?? null, ancien: (ancienne?.slug as string | undefined) ?? null };
+}
+
+/** `utilise_par` : la donnée qui porte déjà cet identifiant (ou l'a porté et y redirige). */
+export async function disponibiliteSlug(slug: string) {
+  const { actuel, ancien } = await usageSlug(slug);
+  return { slug, disponible: !actuel && !ancien, utilise_par: actuel ?? ancien, ancien_identifiant: !actuel && Boolean(ancien) };
+}
+
+/** Liens internes des notifications vers `/datasets/<ancien>` (avec ou sans `#…`, `?…`) réécrits vers le nouveau. */
+export function lienRenomme(lien: string, ancien: string, nouveau: string): string | null {
+  const prefixe = `/datasets/${ancien}`;
+  if (!lien.startsWith(prefixe)) return null;
+  const suite = lien.slice(prefixe.length);
+  return suite === "" || /^[#?/]/.test(suite) ? `/datasets/${nouveau}${suite}` : null;
+}
+
+async function majLiensNotifications(ancien: string, nouveau: string) {
+  try {
+    const { data, error } = await supabaseAdmin().from("notifications").select("id, lien").like("lien", `/datasets/${ancien}%`);
+    if (error) throw error;
+    const modifications = (data ?? []).flatMap((ligne) => {
+      const lien = lienRenomme(ligne.lien as string, ancien, nouveau);
+      return lien ? [{ id: ligne.id as string, lien }] : [];
+    });
+    await Promise.all(modifications.map(({ id, lien }) => supabaseAdmin().from("notifications").update({ lien }).eq("id", id)));
+  } catch (erreur) {
+    // Au mieux : un lien de notification ancien reste redirigé par la fiche.
+    console.error("renommage: liens des notifications non mis à jour", ancien, erreur);
+  }
+}
+
+/**
+ * Change l'identifiant d'une donnée. L'ancien est gardé dans `anciens_slugs` : la fiche et l'API y redirigent.
+ * Refusé pour une donnée synchronisée (la synchronisation la retrouve par son identifiant).
+ * `illustrationActuelle` : image par défaut affichée par le site (choisie d'après l'identifiant), gardée telle quelle.
+ */
+export async function renommerDonnee(ancien: string, nouveau: string, illustrationActuelle?: string) {
+  const donnee = await chargerDonneeAdmin(ancien);
+  if (nouveau === ancien) return { donnee, redirection: false };
+  if ((donnee.sources as { type?: string } | null)?.type === "synchronisee") {
+    throw new ErreurApi(409, "synchronized_source", "Une donnée synchronisée garde son identifiant : la synchronisation la retrouve grâce à lui.");
+  }
+  const usage = await usageSlug(nouveau);
+  if (usage.actuel) throw new ErreurApi(409, "slug_taken", `L'identifiant « ${nouveau} » est déjà utilisé.`, { slug: usage.actuel });
+  if (usage.ancien && usage.ancien !== ancien) {
+    throw new ErreurApi(409, "slug_taken", `« ${nouveau} » est un ancien identifiant de « ${usage.ancien} » (ses anciens liens y redirigent).`, {
+      slug: usage.ancien,
+    });
+  }
+
+  const { data: lue, error: erreurLecture } = await supabaseAdmin().from("datasets").select("anciens_slugs").eq("id", donnee.id).maybeSingle();
+  if (erreurLecture && erreurLecture.code !== "42703") throw erreurBase(erreurLecture);
+  const anciens = erreurLecture ? null : (((lue?.anciens_slugs as string[] | null) ?? []) as string[]);
+
+  const ligne: Record<string, unknown> = { slug: nouveau, mis_a_jour_le: new Date().toISOString() };
+  // L'image par défaut du site dépend de l'identifiant : on fige celle qui était affichée (pack public uniquement).
+  if (!donnee.illustration_url && illustrationActuelle?.startsWith(urlPublique("web-assets/"))) ligne.illustration_url = illustrationActuelle;
+  // Revenir à un ancien identifiant le retire de la liste.
+  if (anciens) ligne.anciens_slugs = [...new Set([...anciens.filter((slug) => slug !== nouveau), ancien])];
+  const { error } = await supabaseAdmin().from("datasets").update(ligne).eq("id", donnee.id);
+  if (error) {
+    if (error.code === "23505") throw new ErreurApi(409, "slug_taken", `L'identifiant « ${nouveau} » est déjà utilisé.`);
+    throw erreurBase(error);
+  }
+  await majLiensNotifications(ancien, nouveau);
+  return { donnee: await chargerDonneeAdmin(nouveau), redirection: anciens !== null };
 }
 
 // ---------------------------------------------------------------- Fichiers et versions

@@ -31,7 +31,7 @@ describe("API", () => {
     const spec = await (await requete("/openapi.json")).json();
     expect(spec.openapi).toBe("3.1.0");
     expect(Object.keys(spec.paths)).toEqual(
-      expect.arrayContaining(["/v1/datasets", "/v1/datasets/{slug}", "/v1/datasets/{slug}/download", "/v1/admin/datasets", "/v1/admin/submissions/{id}/publish", "/v1/admin/sources"])
+      expect.arrayContaining(["/v1/datasets", "/v1/datasets/{slug}", "/v1/datasets/{slug}/download", "/v1/admin/datasets", "/v1/admin/submissions/{id}/publish", "/v1/admin/sources", "/v1/admin/slugs/{slug}", "/v1/admin/datasets/{slug}/rename"])
     );
   });
 
