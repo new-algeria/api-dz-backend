@@ -7,6 +7,7 @@ import { ErreurApi, introuvable } from "./erreurs.js";
 import { filtresRecherche } from "./recherche.js";
 import { ecrireObjet, infosObjet, lienEnvoiSigne, lireObjet, supprimerObjet, urlPublique } from "./r2.js";
 import { supabaseAdmin } from "./supabase.js";
+import { slugDepuisTitre } from "./textes.js";
 
 export const STATUTS = ["brouillon", "en_revue", "publie", "archive"] as const;
 export type Statut = (typeof STATUTS)[number];
@@ -119,6 +120,19 @@ export async function enregistrerDonnee(slug: string, champs: ChampsDonnee & { t
   if (!existante) return { donnee: await creerDonnee(slug, { statut: "publie", ...champs }, acteur), creee: true };
   const { statut: _statut, ...reste } = champs;
   return { donnee: await modifierDonnee(slug, reste), creee: false };
+}
+
+/** Premier slug libre dans `datasets` ou `sources` : `base`, puis `base-2`, `base-3`… */
+export async function slugLibre(table: "datasets" | "sources", base: string): Promise<string> {
+  const racine = base || (table === "datasets" ? "donnee" : "source");
+  const { data, error } = await supabaseAdmin().from(table).select("slug").like("slug", `${racine}%`);
+  if (error) throw erreurBase(error);
+  const pris = new Set((data ?? []).map((ligne) => ligne.slug as string));
+  if (!pris.has(racine)) return racine;
+  for (let n = 2; ; n++) {
+    const candidat = `${racine.slice(0, 80 - String(n).length - 1)}-${n}`;
+    if (!pris.has(candidat)) return candidat;
+  }
 }
 
 /** Préfixe R2 propre à une donnée : les fichiers envoyés par l'API ne sont jamais partagés entre données. */
@@ -305,4 +319,36 @@ export async function retirerIllustration(slug: string) {
   const { error } = await supabaseAdmin().from("datasets").update({ illustration_url: null }).eq("id", donnee.id);
   if (error) throw erreurBase(error);
   if (donnee.illustration_url) await Promise.allSettled(cleIllustration(donnee.illustration_url).map(supprimerObjet));
+}
+
+// ---------------------------------------------------------------- Sources
+
+const COLONNES_SOURCE = "slug, nom, url, type, verifiee, description";
+/** Source servant de modèle au type des nouvelles sources (les valeurs possibles de `type` dépendent de la base). */
+const SOURCE_MODELE = "communaute";
+
+/** Toutes les sources, sans cache : une source créée apparaît tout de suite dans l'administration. */
+export async function listerSourcesAdmin() {
+  const { data, error } = await supabaseAdmin().from("sources").select(COLONNES_SOURCE).order("nom");
+  if (error) throw erreurBase(error);
+  return data ?? [];
+}
+
+/** Nom comparé sans casse, accents, ponctuation ni espaces : « Banque Mondiale » = « banque-mondiale ». */
+export const cleNomSource = (nom: string) => slugDepuisTitre(nom).replace(/-/g, "");
+
+export async function creerSource(champs: { nom: string; url?: string | null; description?: string | null }) {
+  const sources = await listerSourcesAdmin();
+  const existante = sources.find((source) => cleNomSource(source.nom as string) === cleNomSource(champs.nom));
+  if (existante) throw new ErreurApi(409, "source_exists", `La source « ${existante.nom} » existe déjà.`, { slug: existante.slug });
+
+  const slug = await slugLibre("sources", slugDepuisTitre(champs.nom));
+  const modele = sources.find((source) => source.slug === SOURCE_MODELE);
+  const ligne: Record<string, unknown> = { slug, nom: champs.nom, url: champs.url ?? null };
+  if (champs.description) ligne.description = champs.description;
+  // Sans modèle, la base applique sa valeur par défaut.
+  if (modele?.type) ligne.type = modele.type;
+  const { data, error } = await supabaseAdmin().from("sources").insert(ligne).select(COLONNES_SOURCE).single();
+  if (error) throw erreurBase(error);
+  return data;
 }

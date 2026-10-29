@@ -3,10 +3,12 @@ import { bodyLimit } from "hono/body-limit";
 import {
   chargerDonneeAdmin,
   creerDonnee,
+  creerSource,
   enregistrerDonnee,
   enregistrerIllustration,
   FORMATS_ENVOI,
   listerDonneesAdmin,
+  listerSourcesAdmin,
   modifierDonnee,
   preparerEnvoi,
   publierVersion,
@@ -285,6 +287,50 @@ routesAdmin.openapi(
   }
 );
 
+// ---------------------------------------------------------------- Sources
+
+const SourceAdmin = z.record(z.string(), z.unknown()).openapi("SourceAdmin");
+
+routesAdmin.openapi(
+  createRoute({
+    method: "get",
+    path: "/v1/admin/sources",
+    tags: ["Administration"],
+    summary: "Toutes les sources (sans cache)",
+    security: securite,
+    responses: { ...ok(z.object({ data: z.array(SourceAdmin) }), "Sources"), ...reponsesErreur(401, 403) },
+  }),
+  async (c) => c.json({ data: await listerSourcesAdmin() }, 200)
+);
+
+routesAdmin.openapi(
+  createRoute({
+    method: "post",
+    path: "/v1/admin/sources",
+    tags: ["Administration"],
+    summary: "Créer une source",
+    description:
+      "Slug tiré du nom. Le type est celui de la source « communauté ». 409 `source_exists` (avec `details.slug`) si une source porte déjà ce nom (casse et accents ignorés).",
+    security: securite,
+    request: {
+      body: {
+        content: {
+          "application/json": {
+            schema: z.object({
+              nom: z.string().trim().min(2).max(200),
+              url: UrlHttp.nullable().optional(),
+              description: z.string().trim().max(1000).nullable().optional(),
+            }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: { ...cree(SourceAdmin, "Source créée"), ...reponsesErreur(400, 401, 403, 409) },
+  }),
+  async (c) => c.json(await creerSource(c.req.valid("json")), 201)
+);
+
 // ---------------------------------------------------------------- Propositions
 
 routesAdmin.openapi(
@@ -294,13 +340,16 @@ routesAdmin.openapi(
     tags: ["Administration"],
     summary: "Mettre en ligne une proposition acceptée",
     description:
-      "Nouvelle donnée : créée (source « communauté ») avec le contenu de la proposition, puis publiée. Mise à jour : nouvelle version de la donnée visée. " +
+      "Nouvelle donnée : créée avec le contenu de la proposition et la source `source_slug` (par défaut « communauté »), puis publiée. Mise à jour : nouvelle version de la donnée visée. " +
       "Les fichiers CSV, JSON et GeoJSON sont copiés tels quels, un Excel devient un CSV (première feuille) ; les autres formats sont ignorés et listés. " +
       "La proposition passe ensuite en « publiée » et son auteur est notifié. Session d'un administrateur uniquement.",
     security: securite,
     request: {
       params: z.object({ id: z.uuid().openapi({ param: { name: "id", in: "path" } }) }),
-      body: { content: { "application/json": { schema: z.object({ slug: Slug.optional() }) } }, required: false },
+      body: {
+        content: { "application/json": { schema: z.object({ slug: Slug.optional(), source_slug: z.string().regex(/^[a-z0-9-]{1,60}$/).optional() }) } },
+        required: false,
+      },
     },
     responses: {
       ...ok(

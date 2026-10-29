@@ -31,7 +31,7 @@ describe("API", () => {
     const spec = await (await requete("/openapi.json")).json();
     expect(spec.openapi).toBe("3.1.0");
     expect(Object.keys(spec.paths)).toEqual(
-      expect.arrayContaining(["/v1/datasets", "/v1/datasets/{slug}", "/v1/datasets/{slug}/download", "/v1/admin/datasets", "/v1/admin/submissions/{id}/publish"])
+      expect.arrayContaining(["/v1/datasets", "/v1/datasets/{slug}", "/v1/datasets/{slug}/download", "/v1/admin/datasets", "/v1/admin/submissions/{id}/publish", "/v1/admin/sources"])
     );
   });
 
@@ -82,6 +82,11 @@ describe("API", () => {
     const reponse = await requete("/v1/admin/datasets");
     expect(reponse.status).toBe(401);
     expect(reponse.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("exige un jeton pour lire et créer les sources de l'administration", async () => {
+    expect((await requete("/v1/admin/sources")).status).toBe(401);
+    expect((await requete("/v1/admin/sources", { method: "POST", body: JSON.stringify({ nom: "ONS" }), headers: { "content-type": "application/json" } })).status).toBe(401);
   });
 
   it("exige un jeton pour mettre en ligne une proposition", async () => {
