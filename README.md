@@ -28,6 +28,8 @@ npm run typecheck
 | Route | Rôle | Cache CDN | Limite / IP |
 |---|---|---|---|
 | `GET /v1/datasets?q=&category=&source=&wilaya=&sort=top\|recent\|name&page=&limit=` | Catalogue publié, paginé | 15 s | 120/min |
+| `GET /v1/datasets/:slug/share?lng=` | Page d'aperçu pour les réseaux sociaux (balises Open Graph / Twitter, puis renvoi vers la fiche). Servie aux robots (WhatsApp, Facebook, X, LinkedIn, Slack, Discord, Telegram…) par `vercel.json` du site | 1 h / 1 j | 120/min |
+| `GET /v1/datasets/:slug/preview.png?lng=&v=` | Image d'aperçu 1200 × 630 (satori + resvg ; illustration WebP convertie par sharp ; polices Inter et logo dans `assets/`). En cas d'échec : 302 vers l'image générale du site | 1 h / 1 j | 120/min |
 | `GET /v1/datasets/:slug` | Fiche : métadonnées, version, colonnes, aperçu, `ressources` (fichiers et liens) | 15 s | 120/min |
 | `GET /v1/datasets/:slug/data?file=&offset=&limit=&fields=&wilaya=&geometry=none\|wkt` | Enregistrements en JSON paginé (≤ 1000, ≤ 4 Mo) | 30 min | 30/min |
 | `GET /v1/datasets/:slug/sample?file=&n=&random=` | Échantillon | 30 min | 30/min |
