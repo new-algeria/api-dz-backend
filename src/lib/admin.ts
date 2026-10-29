@@ -122,7 +122,7 @@ export async function enregistrerDonnee(slug: string, champs: ChampsDonnee & { t
 }
 
 /** Préfixe R2 propre à une donnée : les fichiers envoyés par l'API ne sont jamais partagés entre données. */
-const prefixeDonnee = (slug: string) => `datasets/${slug}/`;
+export const prefixeDonnee = (slug: string) => `datasets/${slug}/`;
 
 export async function supprimerDonnee(slug: string, supprimerFichiers: boolean) {
   const donnee = await chargerDonneeAdmin(slug);
