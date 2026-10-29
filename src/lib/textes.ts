@@ -5,3 +5,15 @@ export function texteMultilingue(valeur: unknown): string {
   const textes = valeur as Partial<Record<"fr" | "en" | "ar", string>>;
   return textes.fr ?? textes.en ?? textes.ar ?? "";
 }
+
+/** Slug d'URL tiré d'un titre ou d'un nom (comme dans le dialogue d'administration du site). */
+export function slugDepuisTitre(titre: string): string {
+  return titre
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80)
+    .replace(/-+$/, "");
+}

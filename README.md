@@ -59,12 +59,14 @@ Un fichier existe sur R2 dans un ou plusieurs formats d'origine (JSON, GeoJSON, 
 | `POST /v1/admin/datasets/:slug/uploads` | URL `PUT` signée (15 min) pour envoyer un fichier directement à R2 |
 | `POST /v1/admin/datasets/:slug/versions` | Publie une version à partir des fichiers envoyés (lignes, colonnes, aperçu calculés) |
 | `POST` / `DELETE /v1/admin/datasets/:slug/illustration` | Illustration (multipart `image`, PNG / JPEG / WebP, 2 Mo) dans `web-assets/datasets/` |
+| `GET /v1/admin/sources` | Toutes les sources, sans cache (le public `/v1/sources` est en cache 1 h) |
+| `POST /v1/admin/sources` | Créer une source `{"nom", "url"?, "description"?}` : slug tiré du nom, type repris de la source `communaute` ; 409 `source_exists` (`details.slug`) si le nom existe déjà (casse et accents ignorés) |
 | `POST /v1/admin/submissions/:id/publish` | Met en ligne une proposition `acceptee` (session admin uniquement, pas `CLE_SYNCHRO`), voir ci-dessous |
 
 ### Mise en ligne d'une proposition
 
-Bouton « Mettre en ligne » de la page de revue du site (`/moderation/submissions/:id`, admins). Corps facultatif : `{"slug": "…"}` (sinon tiré du titre, `-2`, `-3`… s'il est pris).
-1. **Nouvelle donnée** : créée en brouillon avec le contenu de la proposition (source `communaute`, `url_source` = page de la source, `infos_source` : `soumission_id`, `source_nom`, `periode`). Titre français repris de l'anglais ou de l'arabe s'il manque.
+Bouton « Mettre en ligne » de la page de revue du site (`/moderation/submissions/:id`, admins). Corps facultatif : `{"slug": "…", "source_slug": "…"}` (slug tiré du titre sinon, `-2`, `-3`… s'il est pris ; source choisie par l'admin sur le site, `communaute` par défaut).
+1. **Nouvelle donnée** : créée en brouillon avec le contenu de la proposition (source `source_slug`, `url_source` = page de la source, `infos_source` : `soumission_id`, `source_nom`, `periode`). Titre français repris de l'anglais ou de l'arabe s'il manque.
    **Mise à jour** : nouvelle version de la donnée visée (métadonnées inchangées ; refusée pour une source synchronisée).
 2. Fichiers lus dans le bucket privé Supabase `soumissions` et copiés dans `datasets/<slug>/<horodatage>/` : CSV, JSON, GeoJSON tels quels, Excel converti en CSV (première feuille) ; PDF, ZIP, XML ignorés (listés dans `fichiers_ignores`). Principal : le premier GeoJSON, sinon CSV, sinon JSON. Aucun fichier lisible : 422 `no_usable_file`.
 3. Version publiée (`/versions`), donnée passée en `publie`, puis `rpc("marquer_soumission_publiee")` : la base notifie l'auteur (et l'email part si configuré).

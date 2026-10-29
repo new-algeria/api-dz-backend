@@ -1,10 +1,11 @@
 import * as XLSX from "xlsx";
 import type { Acteur } from "../types.js";
-import { chargerDonneeAdmin, creerDonnee, erreurBase, modifierDonnee, prefixeDonnee, publierVersion, supprimerDonnee, type ChampsDonnee } from "./admin.js";
+import { chargerDonneeAdmin, creerDonnee, erreurBase, modifierDonnee, prefixeDonnee, publierVersion, slugLibre, supprimerDonnee, type ChampsDonnee } from "./admin.js";
 import type { FormatSource } from "./conversion.js";
 import { ErreurApi, introuvable } from "./erreurs.js";
 import { ecrireObjet } from "./r2.js";
 import { supabaseAdmin } from "./supabase.js";
+import { slugDepuisTitre } from "./textes.js";
 
 /**
  * Mise en ligne d'une proposition acceptée : la donnée est créée (ou reçoit une nouvelle version)
@@ -38,18 +39,6 @@ interface Soumission {
 
 // ---------------------------------------------------------------- Fonctions pures (testées)
 
-/** Slug d'URL tiré du titre, comme dans le dialogue d'administration du site. */
-export function slugDepuisTitre(titre: string): string {
-  return titre
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80)
-    .replace(/-+$/, "");
-}
-
 /** Nom logique d'un fichier (`Pharmacies 2026.geojson` → `pharmacies-2026`), conforme à `NomFichier`. */
 export function nomLogique(nomOriginal: string): string {
   return (
@@ -76,8 +65,8 @@ export function formatProposition(nomOriginal: string, typeMime: string | null):
   return null;
 }
 
-/** Champs de la donnée créée à partir d'une proposition (source « communauté », la page d'origine en `url_source`). */
-export function champsDepuisProposition(soumission: Soumission): ChampsDonnee & { titre: Record<string, string> } {
+/** Champs de la donnée créée à partir d'une proposition (source choisie par l'admin, sinon « communauté » ; la page d'origine en `url_source`). */
+export function champsDepuisProposition(soumission: Soumission, sourceSlug = SOURCE_COMMUNAUTE): ChampsDonnee & { titre: Record<string, string> } {
   const periode = [soumission.periode_debut?.slice(0, 4), soumission.periode_fin?.slice(0, 4)].filter(Boolean);
   const infos: Record<string, unknown> = { soumission_id: soumission.id };
   if (soumission.source_nom) infos.source_nom = soumission.source_nom;
@@ -92,7 +81,7 @@ export function champsDepuisProposition(soumission: Soumission): ChampsDonnee & 
     url_source: soumission.source_url,
     mots_cles: soumission.mots_cles,
     wilayas: soumission.wilayas,
-    source_slug: SOURCE_COMMUNAUTE,
+    source_slug: sourceSlug,
     infos_source: infos,
   };
 }
@@ -112,19 +101,6 @@ async function chargerProposition(id: string): Promise<Soumission> {
   if (error) throw erreurBase(error);
   if (!data) throw introuvable("Proposition");
   return data as unknown as Soumission;
-}
-
-/** Premier slug libre : `titre`, puis `titre-2`, `titre-3`… */
-async function slugLibre(base: string): Promise<string> {
-  const racine = base || "donnee";
-  const { data, error } = await supabaseAdmin().from("datasets").select("slug").like("slug", `${racine}%`);
-  if (error) throw erreurBase(error);
-  const pris = new Set((data ?? []).map((ligne) => ligne.slug as string));
-  if (!pris.has(racine)) return racine;
-  for (let n = 2; ; n++) {
-    const candidat = `${racine.slice(0, 80 - String(n).length - 1)}-${n}`;
-    if (!pris.has(candidat)) return candidat;
-  }
 }
 
 /** Première feuille d'un classeur Excel en CSV. */
@@ -177,7 +153,7 @@ async function copierFichiers(soumission: Soumission, slug: string) {
   return { fichiers, ignores };
 }
 
-export async function publierProposition(id: string, acteur: Acteur, options: { slug?: string } = {}) {
+export async function publierProposition(id: string, acteur: Acteur, options: { slug?: string; source_slug?: string } = {}) {
   if (acteur.type !== "admin") throw new ErreurApi(403, "forbidden", "Réservé aux administrateurs.");
   const soumission = await chargerProposition(id);
   if (soumission.statut !== "acceptee") {
@@ -199,9 +175,9 @@ export async function publierProposition(id: string, acteur: Acteur, options: { 
     }
     slug = cible.slug as string;
   } else {
-    slug = options.slug ?? (await slugLibre(slugDepuisTitre(soumission.titre.fr || soumission.titre.en || "")));
+    slug = options.slug ?? (await slugLibre("datasets", slugDepuisTitre(soumission.titre.fr || soumission.titre.en || "")));
     // Brouillon tant que les fichiers ne sont pas publiés : un visiteur ne voit jamais une donnée vide.
-    await creerDonnee(slug, { ...champsDepuisProposition(soumission), statut: "brouillon" }, acteur);
+    await creerDonnee(slug, { ...champsDepuisProposition(soumission, options.source_slug), statut: "brouillon" }, acteur);
     creee = true;
   }
 

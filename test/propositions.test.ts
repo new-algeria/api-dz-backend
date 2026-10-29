@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import { describe, expect, it } from "vitest";
-import { champsDepuisProposition, formatProposition, nomLogique, slugDepuisTitre, xlsxEnCsv } from "../src/lib/propositions.js";
+import { champsDepuisProposition, formatProposition, nomLogique, xlsxEnCsv } from "../src/lib/propositions.js";
+import { slugDepuisTitre } from "../src/lib/textes.js";
 
 const proposition = {
   id: "7b0c1d9e-1111-4c2a-9f00-000000000001",
