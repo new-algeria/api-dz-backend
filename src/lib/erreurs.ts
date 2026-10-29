@@ -18,6 +18,13 @@ export class ErreurApi extends Error {
 
 export const introuvable = (quoi = "Ressource") => new ErreurApi(404, "not_found", `${quoi} introuvable.`);
 
+/** Donnée renommée : son ancien identifiant redirige vers le nouveau (307, voir `onError` dans `index.ts`). */
+export class RedirectionDonnee extends Error {
+  constructor(readonly slug: string) {
+    super(`Donnée renommée : ${slug}`);
+  }
+}
+
 /**
  * Erreur Supabase (objet simple, pas une instance d'`Error` : Hono ne la passerait pas à `onError`).
  * Le détail part dans les logs, le client reçoit un 502 générique.

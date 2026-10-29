@@ -11,7 +11,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { trimTrailingSlash } from "hono/trailing-slash";
 import { lireConfig } from "./config.js";
 import { mettreEnCache } from "./lib/cache-http.js";
-import { ErreurApi, reponseProbleme } from "./lib/erreurs.js";
+import { ErreurApi, RedirectionDonnee, reponseProbleme } from "./lib/erreurs.js";
 import { LIMITES } from "./middleware/limite-debit.js";
 import { routesAdmin } from "./routes/admin.js";
 import { routesPubliques } from "./routes/public.js";
@@ -113,6 +113,12 @@ app.get("/docs", Scalar({ url: "/openapi.json", pageTitle: "API data-dz" }));
 app.notFound((c) => reponseProbleme(c, new ErreurApi(404, "not_found", "Route inconnue. Voir /docs.")));
 
 app.onError((erreur, c) => {
+  if (erreur instanceof RedirectionDonnee) {
+    // Même chemin et mêmes paramètres, avec le nouvel identifiant (fiche, /data, /sample, /download).
+    const chemin = c.req.path.replace(/^\/v1\/datasets\/[^/]+/, `/v1/datasets/${erreur.slug}`);
+    mettreEnCache(c, "redirection");
+    return c.redirect(`${chemin}${new URL(c.req.url).search}`, 307);
+  }
   if (erreur instanceof ErreurApi) return reponseProbleme(c, erreur);
   if (erreur instanceof HTTPException) return reponseProbleme(c, new ErreurApi(erreur.status as 400, "http_error", erreur.message));
   // Erreur inattendue : détail dans les logs (avec le requestId), message générique au client.

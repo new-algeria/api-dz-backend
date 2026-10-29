@@ -55,6 +55,8 @@ Un fichier existe sur R2 dans un ou plusieurs formats d'origine (JSON, GeoJSON, 
 | `POST /v1/admin/datasets` | Créer (brouillon par défaut) |
 | `PATCH /v1/admin/datasets/:slug` | Modifier ; masquer = `{"statut": "archive"}` ou `"brouillon"` |
 | `PUT /v1/admin/datasets/:slug` | Créer ou mettre à jour (synchro) : ne change jamais le statut ni l'illustration d'une donnée existante |
+| `GET /v1/admin/slugs/:slug` | L'identifiant est-il libre ? (`utilise_par` : donnée qui le porte ou l'a porté) |
+| `POST /v1/admin/datasets/:slug/rename` | Changer l'identifiant `{"slug", "illustration_actuelle"?}` : l'ancien est gardé dans `anciens_slugs` (migration `20261029000010`), la fiche et ses sous-routes y redirigent en 307, les liens des notifications sont réécrits ; 409 `slug_taken` ou `synchronized_source` (la synchro retrouve ses données par leur identifiant) |
 | `DELETE /v1/admin/datasets/:slug?files=true` | Suppression définitive (409 si la base refuse : archiver alors) |
 | `POST /v1/admin/datasets/:slug/uploads` | URL `PUT` signée (15 min) pour envoyer un fichier directement à R2 |
 | `POST /v1/admin/datasets/:slug/versions` | Publie une version à partir des fichiers envoyés (lignes, colonnes, aperçu calculés) |

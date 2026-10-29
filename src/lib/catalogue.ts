@@ -1,7 +1,7 @@
 import type { PostgrestError } from "@supabase/supabase-js";
 import { lireConfig } from "../config.js";
 import { FORMATS_SORTIE, type FormatSortie } from "./conversion.js";
-import { erreurSupabase } from "./erreurs.js";
+import { erreurSupabase, RedirectionDonnee } from "./erreurs.js";
 import { filtresRecherche } from "./recherche.js";
 import { supabasePublic } from "./supabase.js";
 
@@ -145,8 +145,31 @@ export async function chargerFicheInterne(slug: string): Promise<{ fiche: LigneF
       .maybeSingle();
     return { data: data as unknown as LigneFiche | null, error };
   });
-  if (!ligne) return null;
+  if (!ligne) {
+    const nouveau = await slugActuel(slug);
+    if (nouveau) throw new RedirectionDonnee(nouveau);
+    return null;
+  }
   return { fiche: ligne, fichiers: ligne.versions?.fichiers ?? [] };
+}
+
+/**
+ * Identifiant actuel d'une donnée publiée renommée (colonne `anciens_slugs`, migration 20261029000010).
+ * Sans la migration (42703) ou en cas d'erreur, pas de redirection : la route répond 404 comme avant.
+ */
+async function slugActuel(ancien: string): Promise<string | null> {
+  const { data, error } = await supabasePublic()
+    .from("datasets")
+    .select("slug")
+    .eq("statut", "publie")
+    .contains("anciens_slugs", [ancien])
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    if (error.code !== "42703") console.error("supabase:", error.code, error.message);
+    return null;
+  }
+  return (data?.slug as string | undefined) ?? null;
 }
 
 /** Nom logique d'un fichier : `nom` en base, sinon le nom de la clé sans extension. */
