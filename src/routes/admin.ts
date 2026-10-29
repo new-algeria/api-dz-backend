@@ -16,6 +16,7 @@ import {
   TAILLE_MAX_ILLUSTRATION,
 } from "../lib/admin.js";
 import { sansCache } from "../lib/cache-http.js";
+import { publierProposition } from "../lib/propositions.js";
 import { ErreurApi } from "../lib/erreurs.js";
 import { exigerAdmin } from "../middleware/admin.js";
 import { limiteDebit } from "../middleware/limite-debit.js";
@@ -281,5 +282,41 @@ routesAdmin.openapi(
   async (c) => {
     await retirerIllustration(c.req.valid("param").slug);
     return c.body(null, 204);
+  }
+);
+
+// ---------------------------------------------------------------- Propositions
+
+routesAdmin.openapi(
+  createRoute({
+    method: "post",
+    path: "/v1/admin/submissions/{id}/publish",
+    tags: ["Administration"],
+    summary: "Mettre en ligne une proposition acceptée",
+    description:
+      "Nouvelle donnée : créée (source « communauté ») avec le contenu de la proposition, puis publiée. Mise à jour : nouvelle version de la donnée visée. " +
+      "Les fichiers CSV, JSON et GeoJSON sont copiés tels quels, un Excel devient un CSV (première feuille) ; les autres formats sont ignorés et listés. " +
+      "La proposition passe ensuite en « publiée » et son auteur est notifié. Session d'un administrateur uniquement.",
+    security: securite,
+    request: {
+      params: z.object({ id: z.uuid().openapi({ param: { name: "id", in: "path" } }) }),
+      body: { content: { "application/json": { schema: z.object({ slug: Slug.optional() }) } }, required: false },
+    },
+    responses: {
+      ...ok(
+        z.object({
+          slug: z.string(),
+          creee: z.boolean(),
+          version: z.object({ numero: z.string(), nb_lignes: z.number(), colonnes: z.array(z.unknown()), fichiers: z.number() }),
+          fichiers_ignores: z.array(z.string()),
+        }),
+        "Proposition en ligne"
+      ),
+      ...reponsesErreur(400, 401, 403, 404, 409, 422),
+    },
+  }),
+  async (c) => {
+    const corps = c.req.header("content-type")?.includes("application/json") ? c.req.valid("json") : {};
+    return c.json(await publierProposition(c.req.valid("param").id, c.get("acteur"), corps), 200);
   }
 );

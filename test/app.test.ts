@@ -31,7 +31,7 @@ describe("API", () => {
     const spec = await (await requete("/openapi.json")).json();
     expect(spec.openapi).toBe("3.1.0");
     expect(Object.keys(spec.paths)).toEqual(
-      expect.arrayContaining(["/v1/datasets", "/v1/datasets/{slug}", "/v1/datasets/{slug}/download", "/v1/admin/datasets"])
+      expect.arrayContaining(["/v1/datasets", "/v1/datasets/{slug}", "/v1/datasets/{slug}/download", "/v1/admin/datasets", "/v1/admin/submissions/{id}/publish"])
     );
   });
 
@@ -82,6 +82,11 @@ describe("API", () => {
     const reponse = await requete("/v1/admin/datasets");
     expect(reponse.status).toBe(401);
     expect(reponse.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("exige un jeton pour mettre en ligne une proposition", async () => {
+    const reponse = await requete("/v1/admin/submissions/7b0c1d9e-1111-4c2a-9f00-000000000001/publish", { method: "POST" });
+    expect(reponse.status).toBe(401);
   });
 
   it("limite le débit par IP avec les en-têtes RateLimit", async () => {
