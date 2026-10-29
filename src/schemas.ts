@@ -44,6 +44,8 @@ export const ResumeDonnee = z
     licence_code: z.string().nullable(),
     mots_cles: z.array(z.string()).nullable(),
     mis_a_jour_le: z.string(),
+    publie_le: z.string().nullable().openapi({ description: "Première publication dans le catalogue" }),
+    cree_le: z.string(),
     illustration_url: z.string().nullable(),
     source: Source.nullable(),
     version: z.looseObject({ numero: z.string(), nb_lignes: z.number().nullable(), publie_le: z.string().nullable() }).nullable(),
