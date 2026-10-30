@@ -13,7 +13,7 @@ import {
 import { colonnesDe, FORMATS_SORTIE, lignesAPlat } from "../lib/conversion.js";
 import { ErreurApi, introuvable } from "../lib/erreurs.js";
 import { lienTelechargement, lireTableDonnee } from "../lib/fichiers.js";
-import { imageApercu, langueApercu, pageIntrouvable, pagePartage, type FicheApercu } from "../lib/partage.js";
+import { langueApercu, pageIntrouvable, pagePartage, type FicheApercu } from "../lib/partage.js";
 import { limiteDebit } from "../middleware/limite-debit.js";
 import { FicheDonnee, NomFichier, Pagination, ParamsSlug, reponsesErreur, ResumeDonnee } from "../schemas.js";
 import type { EnvApp } from "../types.js";
@@ -265,6 +265,8 @@ routesPubliques.openapi(
     const resultat = await chargerFicheInterne(c.req.valid("param").slug);
     if (!resultat) throw introuvable("Donnée");
     try {
+      // Chargé à la demande : un module natif ou WebAssembly qui ne charge pas ne touche que l'image.
+      const { imageApercu } = await import("../lib/image-apercu.js");
       const png = await imageApercu(resultat.fiche as unknown as FicheApercu, langueApercu(c.req.valid("query").lng));
       mettreEnCache(c, "apercu");
       return c.body(png as Uint8Array<ArrayBuffer>, 200, { "Content-Type": "image/png" });

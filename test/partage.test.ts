@@ -13,9 +13,8 @@ beforeAll(() => {
   });
 });
 
-const { chiffresApercu, descriptionApercu, formatsDe, imageApercu, langueApercu, pagePartage, titreImage, urlIllustrationApercu } = await import(
-  "../src/lib/partage.js"
-);
+const { chiffresApercu, descriptionApercu, formatsDe, langueApercu, pagePartage, titreImage } = await import("../src/lib/partage.js");
+const { imageApercu, urlIllustrationApercu } = await import("../src/lib/image-apercu.js");
 
 const fiche = {
   slug: "pharmacies",
@@ -114,6 +113,14 @@ describe("aperçu sur les réseaux sociaux", () => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("routes d'aperçu", () => {
+  it("ne chargent les modules de l'image (natifs, WebAssembly) qu'à la demande", async () => {
+    const { readFile } = await import("node:fs/promises");
+    for (const fichier of ["../src/index.ts", "../src/routes/public.ts", "../src/lib/partage.ts"]) {
+      const source = await readFile(new URL(fichier, import.meta.url), "utf8");
+      expect(source).not.toMatch(/from "(satori|sharp|@resvg\/resvg-js|lucide)"|image-apercu\.js";/);
+    }
+  });
+
   it("sont documentées", async () => {
     const { default: app } = await import("../src/index.js");
     const spec = await (await app.request("/openapi.json")).json();
