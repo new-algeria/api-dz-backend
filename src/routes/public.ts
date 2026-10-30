@@ -1,5 +1,6 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { mettreEnCache } from "../lib/cache-http.js";
+import { URL_SITE } from "../lib/catalogue.js";
 import {
   chargerFicheInterne,
   chargerStatistiques,
@@ -12,6 +13,7 @@ import {
 import { colonnesDe, FORMATS_SORTIE, lignesAPlat } from "../lib/conversion.js";
 import { ErreurApi, introuvable } from "../lib/erreurs.js";
 import { lienTelechargement, lireTableDonnee } from "../lib/fichiers.js";
+import { imageApercu, langueApercu, pageIntrouvable, pagePartage, type FicheApercu } from "../lib/partage.js";
 import { limiteDebit } from "../middleware/limite-debit.js";
 import { FicheDonnee, NomFichier, Pagination, ParamsSlug, reponsesErreur, ResumeDonnee } from "../schemas.js";
 import type { EnvApp } from "../types.js";
@@ -217,6 +219,63 @@ routesPubliques.openapi(
 const Categorie = z
   .object({ slug: z.string(), nom: z.record(z.string(), z.string()), icone: z.string().nullable(), ordre: z.number() })
   .openapi("Categorie");
+
+// ---------------------------------------------------------------- Aperçu sur les réseaux sociaux
+
+const QueryLangue = z.object({
+  lng: z.string().max(10).optional().openapi({ description: "fr, en ou ar (anglais par défaut)", example: "fr" }),
+  v: z.string().max(60).optional().openapi({ description: "Version de l'image (date de mise à jour), pour les caches" }),
+});
+
+routesPubliques.openapi(
+  createRoute({
+    method: "get",
+    path: "/v1/datasets/{slug}/share",
+    tags: ["Données"],
+    summary: "Page d'aperçu pour les réseaux sociaux",
+    description:
+      "Balises Open Graph et Twitter de la fiche (titre, description, image `preview.png`), puis renvoi vers la fiche. " +
+      "Servie aux robots des réseaux sociaux à la place de https://data-dz.com/datasets/{slug}.",
+    request: { params: ParamsSlug, query: QueryLangue },
+    responses: { 200: { description: "Page HTML", content: { "text/html": { schema: z.string() } } }, ...reponsesErreur(404, 429) },
+  }),
+  async (c) => {
+    const resultat = await chargerFicheInterne(c.req.valid("param").slug);
+    mettreEnCache(c, "apercu");
+    if (!resultat) return c.html(pageIntrouvable(), 404);
+    return c.html(pagePartage(resultat.fiche as unknown as FicheApercu, langueApercu(c.req.valid("query").lng)), 200);
+  }
+);
+
+routesPubliques.openapi(
+  createRoute({
+    method: "get",
+    path: "/v1/datasets/{slug}/preview.png",
+    tags: ["Données"],
+    summary: "Image d'aperçu (1200 × 630)",
+    description: "Logo data-dz, drapeau, catégorie, titre, source, chiffres et illustration de la donnée. En cas d'échec : redirection vers l'image générale du site.",
+    request: { params: ParamsSlug, query: QueryLangue },
+    responses: {
+      200: { description: "Image PNG", content: { "image/png": { schema: z.string().openapi({ format: "binary" }) } } },
+      302: { description: "Image générale du site" },
+      ...reponsesErreur(404, 429),
+    },
+  }),
+  async (c) => {
+    const resultat = await chargerFicheInterne(c.req.valid("param").slug);
+    if (!resultat) throw introuvable("Donnée");
+    try {
+      const png = await imageApercu(resultat.fiche as unknown as FicheApercu, langueApercu(c.req.valid("query").lng));
+      mettreEnCache(c, "apercu");
+      return c.body(png as Uint8Array<ArrayBuffer>, 200, { "Content-Type": "image/png" });
+    } catch (erreur) {
+      // Mieux vaut l'image générale qu'un aperçu vide.
+      console.error("apercu:", erreur);
+      mettreEnCache(c, "redirection");
+      return c.redirect(`${URL_SITE}/og-image.png`, 302);
+    }
+  }
+);
 
 routesPubliques.openapi(
   createRoute({

@@ -14,13 +14,17 @@
   },
   "dependencies": {
     "@hono/zod-openapi": "^1.6.3",
+    "@resvg/resvg-js": "^2.6.2",
     "@scalar/hono-api-reference": "^0.9.48",
     "@supabase/supabase-js": "^2.109.0",
     "@upstash/ratelimit": "^2.2.0",
     "@upstash/redis": "^1.39.0",
     "aws4fetch": "^1.0.20",
     "hono": "^4.13.13",
+    "lucide": "^0.462.0",
     "papaparse": "^5.7.0",
+    "satori": "^0.33.5",
+    "sharp": "^0.35.5",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^4.6.7"
   },

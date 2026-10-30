@@ -20,8 +20,9 @@ interface LigneFichier {
 /** Fichier tel que la base le décrit ; `cle_stockage` ne quitte jamais l'API. */
 export type FichierInterne = LigneFichier;
 
+// `publie_le` (première publication, sinon `cree_le`) : le site met en avant les données ajoutées depuis peu.
 const COLONNES_RESUME = `
-  id, slug, titre, description, categorie_slug, licence_code, mots_cles, mis_a_jour_le,
+  id, slug, titre, description, categorie_slug, licence_code, mots_cles, mis_a_jour_le, publie_le, cree_le,
   score, nb_votes_pour, nb_votes_contre, nb_favoris, nb_commentaires,
   sources ( slug, nom, url, verifiee ),
   versions!datasets_version_courante_fk ( numero, nb_lignes, publie_le )

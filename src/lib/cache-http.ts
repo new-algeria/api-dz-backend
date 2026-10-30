@@ -14,6 +14,8 @@ const POLITIQUES = {
   donnees: { navigateur: "public, max-age=300", cdn: "max-age=1800, stale-while-revalidate=86400" },
   /** Redirection vers un lien signé valable 10 min : 60 s de cache laissent toujours 9 min de validité. */
   redirection: { navigateur: "public, max-age=60", cdn: "max-age=60" },
+  /** Aperçus pour les réseaux sociaux : l'URL de l'image change avec la donnée (`?v=`), la page se relit en 1 h. */
+  apercu: { navigateur: "public, max-age=3600", cdn: "max-age=86400, stale-while-revalidate=604800" },
   /** Documentation et OpenAPI. */
   documentation: { navigateur: "public, max-age=300", cdn: "max-age=3600, stale-while-revalidate=86400" },
 } as const;
