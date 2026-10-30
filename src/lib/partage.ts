@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { Resvg } from "@resvg/resvg-js";
 import { Antenna, Briefcase, Bus, Castle, ChartLine, HeartPulse, Landmark, Leaf, School, Shield, Sprout, Store, Tag, Trophy, type IconNode } from "lucide";
-import satori from "satori";
+import * as moduleSatori from "satori";
+import type { SatoriOptions } from "satori";
 import sharp from "sharp";
 import { lireConfig } from "../config.js";
 import { URL_SITE } from "./catalogue.js";
@@ -178,6 +179,15 @@ const h = (type: string, props: Record<string, unknown>, ...enfants: (Noeud | st
   const liste = enfants.filter((enfant): enfant is Noeud | string => Boolean(enfant));
   return { type, props: { ...props, children: liste.length <= 1 ? liste[0] : liste } };
 };
+
+/**
+ * `satori` déclare son export par défaut de la même façon pour `import` et `require` : selon la compilation
+ * (Vercel ne fait pas comme `tsc` en local), l'import par défaut donne la fonction ou le module entier.
+ * On prend donc la fonction là où elle est, au typage comme à l'exécution.
+ */
+type Satori = (element: unknown, options: SatoriOptions) => Promise<string>;
+const exportSatori = (moduleSatori as unknown as { default: Satori | { default: Satori } }).default;
+const satori: Satori = typeof exportSatori === "function" ? exportSatori : exportSatori.default;
 
 const enDataUri = (type: string, octets: Uint8Array | Buffer) => `data:${type};base64,${Buffer.from(octets).toString("base64")}`;
 
@@ -402,7 +412,7 @@ export async function imageApercu(fiche: FicheApercu, langue: LangueApercu): Pro
     )
   );
 
-  const svg = await satori(arbre as never, {
+  const svg = await satori(arbre, {
     width: LARGEUR_APERCU,
     height: HAUTEUR_APERCU,
     fonts: [
