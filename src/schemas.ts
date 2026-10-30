@@ -34,6 +34,15 @@ const Compteurs = {
   nb_commentaires: z.number(),
 };
 
+const Ressource = z
+  .object({
+    nom: z.string(),
+    principal: z.boolean(),
+    fichiers: z.array(z.object({ format: z.string(), taille_octets: z.number().nullable(), url: z.url() })),
+    telechargements: z.array(z.object({ format: z.enum(FORMATS_SORTIE), natif: z.boolean(), url: z.url() })),
+  })
+  .openapi("Ressource", { description: "Un fichier de la donnée, dans ses formats d'origine et les formats de téléchargement." });
+
 export const ResumeDonnee = z
   .looseObject({
     ...Compteurs,
@@ -48,19 +57,19 @@ export const ResumeDonnee = z
     cree_le: z.string(),
     illustration_url: z.string().nullable(),
     source: Source.nullable(),
-    version: z.looseObject({ numero: z.string(), nb_lignes: z.number().nullable(), publie_le: z.string().nullable() }).nullable(),
+    infos_source: z.record(z.string(), z.unknown()).nullable(),
+    version: z
+      .looseObject({
+        numero: z.string(),
+        nb_lignes: z.number().nullable(),
+        publie_le: z.string().nullable(),
+        colonnes: z.array(z.object({ nom: z.string(), type: z.string() })).nullable(),
+      })
+      .nullable(),
+    ressources: z.array(Ressource).openapi({ description: "Fichiers de la version et leurs liens de téléchargement (comme la fiche)" }),
     liens: Liens,
   })
   .openapi("ResumeDonnee");
-
-const Ressource = z
-  .object({
-    nom: z.string(),
-    principal: z.boolean(),
-    fichiers: z.array(z.object({ format: z.string(), taille_octets: z.number().nullable(), url: z.url() })),
-    telechargements: z.array(z.object({ format: z.enum(FORMATS_SORTIE), natif: z.boolean(), url: z.url() })),
-  })
-  .openapi("Ressource", { description: "Un fichier de la donnée, dans ses formats d'origine et les formats de téléchargement." });
 
 export const FicheDonnee = ResumeDonnee.extend({
   readme: z.string().nullable(),
