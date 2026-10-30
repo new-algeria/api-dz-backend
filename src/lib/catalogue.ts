@@ -21,11 +21,14 @@ interface LigneFichier {
 export type FichierInterne = LigneFichier;
 
 // `publie_le` (première publication, sinon `cree_le`) : le site met en avant les données ajoutées depuis peu.
+// Colonnes, fichiers et `infos_source` : les cartes du catalogue en tirent leur chiffre (unité, séries temporelles),
+// leurs boutons « Voir la carte » / « Graphique » et « Télécharger ». Les fichiers sortent en `ressources`
+// (liens de l'API), jamais avec leur clé de stockage.
 const COLONNES_RESUME = `
-  id, slug, titre, description, categorie_slug, licence_code, mots_cles, mis_a_jour_le, publie_le, cree_le,
+  id, slug, titre, description, categorie_slug, licence_code, mots_cles, mis_a_jour_le, publie_le, cree_le, infos_source,
   score, nb_votes_pour, nb_votes_contre, nb_favoris, nb_commentaires,
   sources ( slug, nom, url, verifiee ),
-  versions!datasets_version_courante_fk ( numero, nb_lignes, publie_le )
+  versions!datasets_version_courante_fk ( numero, nb_lignes, publie_le, colonnes, fichiers ( nom, format, cle_stockage, principal, taille_octets ) )
 `;
 
 const COLONNES_FICHE = `
@@ -89,11 +92,13 @@ type LigneResume = Record<string, unknown> & { slug: string; illustration_url?: 
 
 function versResume(ligne: LigneResume) {
   const { sources, versions, illustration_url, ...reste } = ligne;
+  const { fichiers, ...version } = (versions ?? {}) as Record<string, unknown> & { fichiers?: FichierInterne[] | null };
   return {
     ...reste,
     illustration_url: illustration_url ?? null,
     source: sources ?? null,
-    version: versions ?? null,
+    version: versions ? version : null,
+    ressources: ressourcesDe(ligne.slug, fichiers ?? []),
     liens: { api: urlApiDonnee(ligne.slug), page: urlPageDonnee(ligne.slug) },
   };
 }
