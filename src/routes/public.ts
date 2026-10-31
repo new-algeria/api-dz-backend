@@ -125,7 +125,7 @@ routesPubliques.openapi(
         }),
         "Enregistrements"
       ),
-      ...reponsesErreur(400, 404, 413, 422, 429),
+      ...reponsesErreur(400, 403, 404, 413, 422, 429),
     },
   }),
   async (c) => {
@@ -163,7 +163,7 @@ routesPubliques.openapi(
         random: z.enum(["true", "false", "1", "0"]).default("false").transform((valeur) => valeur === "true" || valeur === "1"),
       }),
     },
-    responses: { ...json(z.object({ fichier: z.string(), data: z.array(Ligne) }), "Échantillon"), ...reponsesErreur(400, 404, 422, 429) },
+    responses: { ...json(z.object({ fichier: z.string(), data: z.array(Ligne) }), "Échantillon"), ...reponsesErreur(400, 403, 404, 422, 429) },
   }),
   async (c) => {
     const { slug } = c.req.valid("param");
@@ -202,7 +202,7 @@ routesPubliques.openapi(
     },
     responses: {
       302: { description: "Redirection vers le fichier", headers: z.object({ Location: z.url() }) },
-      ...reponsesErreur(400, 404, 422, 429),
+      ...reponsesErreur(400, 403, 404, 422, 429),
     },
   }),
   async (c) => {

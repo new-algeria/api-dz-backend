@@ -45,24 +45,42 @@ const COLONNES_FICHE = `
 `;
 
 /**
- * La colonne `illustration_url` arrive avec la migration 20261025000009. Tant qu'elle n'est pas appliquée,
- * on relance la requête sans elle (code Postgres 42703 : colonne inconnue) au lieu de casser l'API.
+ * Colonnes ajoutées par des migrations récentes : `illustration_url` (20261025000009), `diffusion_restreinte`
+ * et `licence_manuelle` (20261031000011). Tant qu'une migration n'est pas appliquée, on relance la requête
+ * sans la colonne inconnue (code Postgres 42703) au lieu de casser l'API ; elle vaut alors sa valeur par défaut.
  */
-let illustrationDisponible = true;
+const COLONNES_RECENTES = ["illustration_url", "diffusion_restreinte", "licence_manuelle"] as const;
+const colonnesAbsentes = new Set<string>();
 
-export async function avecIllustration<T>(
+export async function avecColonnesRecentes<T>(
   colonnes: string,
   executer: (select: string) => PromiseLike<{ data: T; error: PostgrestError | null }>
 ): Promise<T> {
-  if (illustrationDisponible) {
-    const resultat = await executer(`illustration_url, ${colonnes}`);
+  for (;;) {
+    const recentes = COLONNES_RECENTES.filter((colonne) => !colonnesAbsentes.has(colonne));
+    const resultat = await executer([...recentes, colonnes].join(", "));
     if (!resultat.error) return resultat.data;
-    if (resultat.error.code !== "42703") throw erreurSupabase(resultat.error);
-    illustrationDisponible = false;
+    const manquante = resultat.error.code === "42703" ? recentes.find((colonne) => resultat.error!.message.includes(colonne)) : undefined;
+    if (!manquante) throw erreurSupabase(resultat.error);
+    colonnesAbsentes.add(manquante);
   }
-  const resultat = await executer(colonnes);
-  if (resultat.error) throw erreurSupabase(resultat.error);
-  return resultat.data;
+}
+
+/** Ancien nom, gardé pour les appels existants. */
+export const avecIllustration = avecColonnesRecentes;
+
+/** Fichiers non redistribuables (`diffusion_restreinte`) : jamais de lien de téléchargement ni de lignes. */
+export const estRestreinte = (ligne: { diffusion_restreinte?: unknown }) => ligne.diffusion_restreinte === true;
+
+/**
+ * Où obtenir une donnée restreinte : le paquet npm de la source (`infos_source.paquet`, écrit par la synchro
+ * GeoAlgeria), sinon la page de la source si c'est une page npm.
+ */
+export function lienPaquet(ligne: Record<string, unknown>): string | null {
+  const paquet = (ligne.infos_source as { paquet?: unknown } | null | undefined)?.paquet;
+  if (typeof paquet === "string" && /^(@[\w.-]+\/)?[\w.-]+$/.test(paquet)) return `https://www.npmjs.com/package/${paquet}`;
+  const url = typeof ligne.url_source === "string" ? ligne.url_source : null;
+  return url?.startsWith("https://www.npmjs.com/") ? url : null;
 }
 
 export const urlApiDonnee = (slug: string) => `${lireConfig().URL_API}/v1/datasets/${slug}`;
@@ -88,24 +106,32 @@ export interface FiltresCatalogue {
   limit: number;
 }
 
-type LigneResume = Record<string, unknown> & { slug: string; illustration_url?: string | null };
+type LigneResume = Record<string, unknown> & {
+  slug: string;
+  illustration_url?: string | null;
+  diffusion_restreinte?: boolean;
+  licence_manuelle?: boolean;
+};
 
 function versResume(ligne: LigneResume) {
-  const { sources, versions, illustration_url, ...reste } = ligne;
+  const { sources, versions, illustration_url, diffusion_restreinte: _restreinte, licence_manuelle: _manuelle, ...reste } = ligne;
   const { fichiers, ...version } = (versions ?? {}) as Record<string, unknown> & { fichiers?: FichierInterne[] | null };
+  const restreinte = estRestreinte(ligne);
   return {
     ...reste,
     illustration_url: illustration_url ?? null,
+    diffusion_restreinte: restreinte,
+    lien_paquet: restreinte ? lienPaquet(ligne) : null,
     source: sources ?? null,
     version: versions ? version : null,
-    ressources: ressourcesDe(ligne.slug, fichiers ?? []),
+    ressources: restreinte ? [] : ressourcesDe(ligne.slug, fichiers ?? []),
     liens: { api: urlApiDonnee(ligne.slug), page: urlPageDonnee(ligne.slug) },
   };
 }
 
 export async function listerDonnees(filtres: FiltresCatalogue) {
   const debut = (filtres.page - 1) * filtres.limit;
-  const { lignes, total } = await avecIllustration(COLONNES_RESUME, async (select) => {
+  const { lignes, total } = await avecColonnesRecentes(COLONNES_RESUME, async (select) => {
     let requete = supabasePublic().from("datasets").select(select, { count: "exact" }).eq("statut", "publie");
     for (const filtre of filtresRecherche(filtres.q ?? "")) requete = requete.or(filtre);
     if (filtres.category) requete = requete.eq("categorie_slug", filtres.category);
@@ -142,7 +168,7 @@ type LigneFiche = LigneResume & {
 
 /** Fiche publiée + fichiers internes (pour les routes qui lisent R2). `null` si absente ou non publiée. */
 export async function chargerFicheInterne(slug: string): Promise<{ fiche: LigneFiche; fichiers: FichierInterne[] } | null> {
-  const ligne = await avecIllustration(COLONNES_FICHE, async (select) => {
+  const ligne = await avecColonnesRecentes(COLONNES_FICHE, async (select) => {
     const { data, error } = await supabasePublic()
       .from("datasets")
       .select(select)
@@ -216,12 +242,14 @@ export function ressourcesDe(slug: string, fichiers: FichierInterne[]) {
 export function versFiche(ligne: LigneFiche, fichiers: FichierInterne[]) {
   const { versions, categories, licences, ...reste } = ligne;
   const { fichiers: _fichiers, ...version } = versions ?? { fichiers: null };
+  const restreinte = estRestreinte(ligne);
   return {
     ...versResume({ ...reste, versions: null }),
     categorie: categories ?? null,
     licence: licences ?? null,
-    version: versions ? version : null,
-    ressources: ressourcesDe(ligne.slug, fichiers),
+    // Donnée restreinte : colonnes et nombre de lignes restent, mais aucune ligne de données (pas d'aperçu).
+    version: versions ? (restreinte ? { ...version, apercu: null } : version) : null,
+    ressources: restreinte ? [] : ressourcesDe(ligne.slug, fichiers),
   };
 }
 
