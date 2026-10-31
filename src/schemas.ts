@@ -56,6 +56,10 @@ export const ResumeDonnee = z
     publie_le: z.string().nullable().openapi({ description: "Première publication dans le catalogue" }),
     cree_le: z.string(),
     illustration_url: z.string().nullable(),
+    diffusion_restreinte: z.boolean().openapi({
+      description: "Fichiers non redistribuables par data-dz : `ressources` est vide et /data, /sample, /download répondent 403 `not_redistributable`",
+    }),
+    lien_paquet: z.string().nullable().openapi({ description: "Où obtenir une donnée restreinte (paquet npm de la source)" }),
     source: Source.nullable(),
     infos_source: z.record(z.string(), z.unknown()).nullable(),
     version: z

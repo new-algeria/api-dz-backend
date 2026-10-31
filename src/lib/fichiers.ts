@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chargerFicheInterne, nomFichier, URL_SITE, type FichierInterne } from "./catalogue.js";
+import { chargerFicheInterne, estRestreinte, lienPaquet, nomFichier, URL_SITE, type FichierInterne } from "./catalogue.js";
 import { convertir, lireTable, TYPES_CONTENU, type FormatSortie, type FormatSource, type Table } from "./conversion.js";
 import { ErreurApi, introuvable } from "./erreurs.js";
 import { ecrireObjet, infosObjet, lienSigne, lireObjet } from "./r2.js";
@@ -21,6 +21,16 @@ async function fichiersDe(slug: string, nom?: string) {
   const resultat = await chargerFicheInterne(slug);
   if (!resultat) throw introuvable("Donnée");
   const { fiche, fichiers } = resultat;
+  // Données non redistribuables : ni fichier, ni ligne, ni conversion (/download, /data, /sample).
+  if (estRestreinte(fiche)) {
+    const lien = lienPaquet(fiche);
+    throw new ErreurApi(
+      403,
+      "not_redistributable",
+      `Ces données ne sont pas redistribuées par data-dz : obtenez-les auprès de leur source${lien ? ` (${lien})` : ""}.`,
+      { lien_paquet: lien }
+    );
+  }
   const nomVise = nom ?? (fichiers.find((fichier) => fichier.principal) ?? fichiers[0]);
   const cible = typeof nomVise === "string" ? nomVise : nomVise ? nomFichier(nomVise) : undefined;
   const versions = fichiers.filter((fichier) => nomFichier(fichier) === cible);

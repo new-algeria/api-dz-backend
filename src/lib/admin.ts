@@ -27,7 +27,8 @@ export function erreurBase(erreur: PostgrestError): ErreurApi {
   return new ErreurApi(502, "database_error", "Erreur de la base de données.");
 }
 
-// `illustration_url` est ajoutée par `avecIllustration` (absente tant que la migration 20261025000009 n'est pas appliquée).
+// `illustration_url`, `diffusion_restreinte` et `licence_manuelle` sont ajoutées par `avecIllustration`
+// (absentes tant que les migrations 20261025000009 et 20261031000011 ne sont pas appliquées).
 const COLONNES_ADMIN = `
   id, slug, titre, description, readme, statut, categorie_slug, licence_code, licence_details, url_source,
   mots_cles, wilayas, frequence_maj, infos_source, cree_le, mis_a_jour_le, publie_le,
@@ -115,11 +116,23 @@ export async function modifierDonnee(slug: string, champs: ChampsDonnee) {
 }
 
 /** Création ou mise à jour (script de synchronisation) : ne touche jamais au statut ni à l'illustration d'une donnée existante. */
+/**
+ * Champs qu'une synchro peut réécrire sur une donnée existante : jamais le statut, et jamais la licence
+ * quand elle a été corrigée à la main (`licence_manuelle`, migration 20261031000011).
+ */
+export function champsSynchronises<T extends ChampsDonnee>(existante: Record<string, unknown>, champs: T) {
+  const { statut: _statut, ...reste } = champs;
+  if (existante.licence_manuelle === true) {
+    delete reste.licence_code;
+    delete reste.licence_details;
+  }
+  return reste;
+}
+
 export async function enregistrerDonnee(slug: string, champs: ChampsDonnee & { titre: Record<string, string> }, acteur: Acteur) {
   const existante = await donneeParSlug(slug);
   if (!existante) return { donnee: await creerDonnee(slug, { statut: "publie", ...champs }, acteur), creee: true };
-  const { statut: _statut, ...reste } = champs;
-  return { donnee: await modifierDonnee(slug, reste), creee: false };
+  return { donnee: await modifierDonnee(slug, champsSynchronises(existante, champs)), creee: false };
 }
 
 /** Premier slug libre dans `datasets` ou `sources` : `base`, puis `base-2`, `base-3`… */
