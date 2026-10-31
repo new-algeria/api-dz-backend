@@ -39,6 +39,11 @@ npm run typecheck
 
 Les réponses servies par le CDN ne comptent pas dans les limites. Les erreurs suivent la RFC 9457 (`application/problem+json`, avec `code` et `requestId`).
 
+### Données non redistribuables
+Colonne `datasets.diffusion_restreinte` (migration `20261031000011_diffusion_restreinte.sql` du dépôt data-dz, **à appliquer avant de déployer**), écrite à la main dans le SQL Editor (aujourd'hui : `poste`, `protection-civile`). La fiche reste publique (métadonnées, colonnes, nombre de lignes), mais `ressources` est vide, `version.apercu` vaut `null`, et `/data`, `/sample`, `/download` répondent **403 `not_redistributable`** sans jamais lire R2. Le catalogue et la fiche portent `diffusion_restreinte` et `lien_paquet` (paquet npm de la source, tiré de `infos_source.paquet`, sinon de `url_source` si c'est une page npm) : le site l'affiche à la place du téléchargement.
+
+`datasets.licence_manuelle` (même migration) : une licence corrigée à la main n'est plus réécrite par la synchro (`PUT /v1/admin/datasets/:slug` ignore alors `licence_code` et `licence_details`, `champsSynchronises()`). Sans la migration, ces deux colonnes sont lues comme `false` (`avecColonnesRecentes()`).
+
 ### Conversions
 Un fichier existe sur R2 dans un ou plusieurs formats d'origine (JSON, GeoJSON, CSV). Un autre format est produit **une seule fois par version** du fichier, rangé dans `exports/<empreinte>/<nom>.<format>`, puis servi par lien signé. Une nouvelle version change l'empreinte, donc les exports se renouvellent seuls.
 
@@ -56,7 +61,7 @@ Un fichier existe sur R2 dans un ou plusieurs formats d'origine (JSON, GeoJSON, 
 | `GET /v1/admin/datasets?q=&statut=` | Toutes les données, tous statuts |
 | `POST /v1/admin/datasets` | Créer (brouillon par défaut) |
 | `PATCH /v1/admin/datasets/:slug` | Modifier ; masquer = `{"statut": "archive"}` ou `"brouillon"` |
-| `PUT /v1/admin/datasets/:slug` | Créer ou mettre à jour (synchro) : ne change jamais le statut ni l'illustration d'une donnée existante |
+| `PUT /v1/admin/datasets/:slug` | Créer ou mettre à jour (synchro) : ne change jamais le statut ni l'illustration d'une donnée existante, ni sa licence si `licence_manuelle` |
 | `GET /v1/admin/slugs/:slug` | L'identifiant est-il libre ? (`utilise_par` : donnée qui le porte ou l'a porté) |
 | `POST /v1/admin/datasets/:slug/rename` | Changer l'identifiant `{"slug", "illustration_actuelle"?}` : l'ancien est gardé dans `anciens_slugs` (migration `20261029000010`), la fiche et ses sous-routes y redirigent en 307, les liens des notifications sont réécrits ; 409 `slug_taken` ou `synchronized_source` (la synchro retrouve ses données par leur identifiant) |
 | `DELETE /v1/admin/datasets/:slug?files=true` | Suppression définitive (409 si la base refuse : archiver alors) |
