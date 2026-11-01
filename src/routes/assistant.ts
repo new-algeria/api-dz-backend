@@ -1,7 +1,7 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { bodyLimit } from "hono/body-limit";
 import { lireConfig } from "../config.js";
-import { URL_SITE, chargerFicheInterne, listerDonnees } from "../lib/catalogue.js";
+import { URL_SITE, chargerFicheInterne, listerDonnees, urlApiDonnee } from "../lib/catalogue.js";
 import { ErreurApi } from "../lib/erreurs.js";
 import { authentifierDjazAI, obtenirQuotaDjazAI } from "../lib/djazai-quota.js";
 import { limiteDebit } from "../middleware/limite-debit.js";
@@ -24,6 +24,8 @@ const SourceDjazAI = z.object({
   id: z.string(),
   titre: z.string(),
   url: z.url(),
+  image_url: z.url().nullable(),
+  formats: z.array(z.string()),
   source_nom: z.string().nullable(),
   source_url: z.url().nullable(),
   mis_a_jour_le: z.string().nullable(),
@@ -88,6 +90,7 @@ type ContexteDonnee = {
   version: string | null;
   nb_lignes: number | null;
   colonnes: string[];
+  formats: string[];
   diffusion_restreinte: boolean;
   apercu: string | null;
   licence_code: string | null;
@@ -260,6 +263,12 @@ async function chercherContexte(
       const source = objet(fiche.sources);
       const licence = objet(fiche.licences);
       const restreinte = fiche.diffusion_restreinte === true;
+      const fichiersVersion = Array.isArray(version?.fichiers) ? version.fichiers : [];
+      const formats = [...new Set(fichiersVersion
+        .map((fichier: unknown) => fichier && typeof fichier === "object" && typeof (fichier as Record<string, unknown>).format === "string"
+          ? ((fichier as Record<string, unknown>).format as string).toUpperCase()
+          : "")
+        .filter(Boolean))];
       const colonnesVersion = version?.colonnes;
       const colonnes = Array.isArray(colonnesVersion)
         ? colonnesVersion.slice(0, 80).map((colonne: unknown) => {
@@ -287,6 +296,7 @@ async function chercherContexte(
         version: typeof version?.numero === "string" ? version.numero : null,
         nb_lignes: typeof version?.nb_lignes === "number" ? version.nb_lignes : null,
         colonnes,
+        formats,
         diffusion_restreinte: restreinte,
         apercu: restreinte ? null : texteApercu(version?.apercu),
         licence_code: typeof licence?.code === "string" ? licence.code : null,
@@ -295,6 +305,50 @@ async function chercherContexte(
     })
   );
   return fiches.filter((fiche): fiche is ContexteDonnee => fiche !== null);
+}
+
+function demandeCatalogueComplet(question: string): boolean {
+  const q = normaliserTerme(question);
+  const demandeListe = /\\b(liste|lister|list|show|affiche|afficher|donne|donner|montre|montrez|give)\\b/.test(q) ||
+    /قائمة|اعرض|اذكر|أعطني|اعطني/.test(q);
+  const demandeTotal = /\\b(tous|toutes|all|every|entire|complet|complete|l'ensemble)\\b/.test(q) ||
+    /كل|جميع|كافة/.test(q);
+  const parleDuCatalogue = /\\b(dataset|datasets|data ?sets?|jeux? de donnees?|donnees?|catalogue)\\b/.test(q) ||
+    /بيانات|مجموعات/.test(q);
+  return parleDuCatalogue && demandeTotal && (demandeListe || q.split(/\\s+/).length <= 7);
+}
+
+async function listerCatalogueComplet(): Promise<string[]> {
+  const taillePage = 100;
+  const plafond = 1000;
+  const premiere = await listerDonnees({ sort: "name", page: 1, limit: taillePage });
+  const donnees = [...premiere.data];
+  const pagesMax = Math.min(premiere.pagination.pages, Math.ceil(plafond / taillePage));
+  for (let debut = 2; debut <= pagesMax; debut += 5) {
+    const pages = Array.from({ length: Math.min(5, pagesMax - debut + 1) }, (_, index) => debut + index);
+    const resultats = await Promise.all(pages.map((page) => listerDonnees({ sort: "name", page, limit: taillePage })));
+    for (const resultat of resultats) donnees.push(...resultat.data);
+  }
+
+  return donnees.map((donnee) => {
+    const slug = typeof donnee.slug === "string" ? donnee.slug : "";
+    const titre = texteMultilingue(donnee.titre) ?? slug;
+    const etiquette = echapperLienMarkdown(titre.replace(/[\\r\\n]+/g, " ").trim());
+    return `- [${etiquette}](${URL_SITE}/datasets/${encodeURIComponent(slug)})`;
+  });
+}
+
+function reponseCatalogueComplet(lignes: string[], quota: z.infer<typeof QuotaDjazAI>, total: number) {
+  const plafondAtteint = total > lignes.length;
+  const entete = `Voici les **${total} jeux de données publiés** du catalogue data-dz :`;
+  const note = plafondAtteint
+    ? `\\n\\nLa liste est tronquée à ${lignes.length} entrées. [Ouvrir le catalogue complet](${URL_SITE}/#catalog).`
+    : `\\n\\n[Explorer le catalogue](${URL_SITE}/#catalog).`;
+  return {
+    answer_markdown: lignes.length ? entete + `\\n\\n` + lignes.join(`\\n`) + note : "Le catalogue ne contient aucun jeu de données publié pour le moment.",
+    sources: [],
+    quota,
+  };
 }
 
 function reponseSansResultat(quota: z.infer<typeof QuotaDjazAI>) {
@@ -403,6 +457,10 @@ async function demanderOpenAi(
         source_url: source.source_url,
         mis_a_jour_le: source.mis_a_jour_le,
         version: source.version,
+        image_url: source.diffusion_restreinte
+          ? null
+          : `${urlApiDonnee(source.id)}/preview.png?lng=fr&v=${encodeURIComponent(source.version ?? "")}`,
+        formats: source.formats,
         licence_code: source.licence_code,
         licence_url: source.licence_url,
       };
@@ -457,6 +515,11 @@ routesAssistant.openapi(
     const membre = await authentifierDjazAI(c.req.header("authorization"));
     const quota = await obtenirQuotaDjazAI(membre.user_id, membre.is_admin, true);
     const { question, history = [], dataset_slugs = [] } = c.req.valid("json");
+    if (demandeCatalogueComplet(question)) {
+      const lignes = await listerCatalogueComplet();
+      const pageInitiale = await listerDonnees({ sort: "name", page: 1, limit: 1 });
+      return c.json(reponseCatalogueComplet(lignes, quota, pageInitiale.pagination.total), 200);
+    }
     const contexte = await chercherContexte(question, dataset_slugs, history);
     if (!contexte.length) return c.json(reponseSansResultat(quota), 200);
     const resultat = await demanderOpenAi(question, contexte, c.get("requestId"), history);
