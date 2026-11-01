@@ -262,11 +262,12 @@ export async function renommerDonnee(ancien: string, nouveau: string, illustrati
 
 // ---------------------------------------------------------------- Fichiers et versions
 
-export const FORMATS_ENVOI = ["json", "geojson", "csv"] as const;
+export const FORMATS_ENVOI = ["json", "geojson", "csv", "ics"] as const;
 const TYPES_ENVOI: Record<(typeof FORMATS_ENVOI)[number], string> = {
   json: "application/json",
   geojson: "application/geo+json",
   csv: "text/csv",
+  ics: "text/calendar",
 };
 export const TAILLE_MAX_FICHIER = 100 * 1024 * 1024;
 
@@ -283,6 +284,11 @@ function versionSuivante(numero: string | undefined): string {
   return `${morceaux[1]}.${Number(morceaux[2]) + 1}.0`;
 }
 
+function compterEvenementsICS(texte: string): number {
+  const lignes = texte.replace(/\r?\n[ \t]/g, "");
+  return lignes.match(/^BEGIN:VEVENT\s*$/gim)?.length ?? 0;
+}
+
 export interface FichierVersion {
   cle: string;
   nom: string;
@@ -292,7 +298,7 @@ export interface FichierVersion {
 
 /**
  * Publie une nouvelle version à partir de fichiers déjà envoyés sur R2 (`preparerEnvoi`).
- * Chaque fichier est relu et validé ; le principal fournit lignes, colonnes et aperçu.
+ * Chaque fichier est relu et validé ; le principal fournit son nombre de lignes ou d'événements, ses colonnes et son aperçu.
  */
 export async function publierVersion(
   slug: string,
@@ -324,7 +330,11 @@ export async function publierVersion(
       fichier,
       taille: infos.taille,
       sha256: createHash("sha256").update(texte).digest("hex"),
-      description: fichier.principal ? (table ? decrireTable(table) : { colonnes: [], apercu: [], nbLignes: 0 }) : null,
+      description: fichier.principal
+        ? table
+          ? decrireTable(table)
+          : { colonnes: [], apercu: [], nbLignes: fichier.format === "ics" ? compterEvenementsICS(texte) : 0 }
+        : null,
     });
   }
   const principal = analyses.find((analyse) => analyse.fichier.principal)!.description!;

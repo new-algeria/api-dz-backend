@@ -188,14 +188,14 @@ routesPubliques.openapi(
     method: "get",
     path: "/v1/datasets/{slug}/download",
     tags: ["Données"],
-    summary: "Télécharger un fichier (CSV, XLSX, JSON, GeoJSON)",
+    summary: "Télécharger un fichier natif ou un export CSV, XLSX, JSON, GeoJSON",
     description:
       "Redirige (302) vers un lien signé valable 10 minutes. Les conversions sont faites une seule fois par version du fichier. " +
       "Partagez toujours cette URL, jamais le lien signé (il expire).",
     request: {
       params: ParamsSlug,
       query: z.object({
-        format: z.enum([...FORMATS_SORTIE, "ics"]).default("json"),
+        format: z.enum([...FORMATS_SORTIE, "ics", "pdf", "xml", "zip"]).default("json"),
         file: NomFichier.optional(),
         inline: z.enum(["1", "0", "true", "false"]).optional().transform((valeur) => valeur === "1" || valeur === "true"),
       }),
