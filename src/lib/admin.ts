@@ -317,7 +317,7 @@ export async function publierVersion(
     const reponse = await lireObjet(fichier.cle);
     const texte = await reponse!.text();
     const table = fichier.format === "ics" ? null : lireTable(texte, fichier.format);
-    if (fichier.format === "ics" && (!/^\\uFEFF?BEGIN:VCALENDAR(?:\\r?\\n|$)/.test(texte) || !/END:VCALENDAR\\s*$/.test(texte))) {
+    if (fichier.format === "ics" && (!/^(?:\uFEFF)?BEGIN:VCALENDAR(?:\r?\n|$)/.test(texte) || !/END:VCALENDAR\s*$/.test(texte))) {
       throw new ErreurApi(422, "invalid_file", `Fichier iCalendar invalide : ${fichier.nom}.ics.`);
     }
     analyses.push({
