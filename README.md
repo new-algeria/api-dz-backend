@@ -35,19 +35,24 @@ npm run typecheck
 | `GET /v1/datasets/:slug/sample?file=&n=&random=` | Échantillon | 30 min | 30/min |
 | `GET /v1/datasets/:slug/download?format=csv\|xlsx\|json\|geojson&file=&inline=` | 302 vers un lien R2 signé (10 min) | 60 s | 30/min |
 | `GET /v1/categories`, `/v1/licences`, `/v1/sources`, `/v1/stats` | Référentiels | 1 h | 120/min |
-| `POST /v1/assistant/query` | DjazAI : réponse Markdown et sources structurées à partir du catalogue publié et des aperçus | aucun | 10/min |
+| `GET /v1/assistant/quota` | Quota quotidien DjazAI du compte connecté | aucun | 10/min/IP |
+| `POST /v1/assistant/query` | DjazAI : réponse Markdown et sources structurées à partir du catalogue publié et des aperçus (connexion requise) | aucun | 10/min/IP |
 | `/v1/admin/*` | Administration (voir plus bas) | aucun | 60/min |
 
 Les réponses servies par le CDN ne comptent pas dans les limites. Les erreurs suivent la RFC 9457 (`application/problem+json`, avec `code` et `requestId`).
 
-### DjazAI (première version)
+### DjazAI
 
-`POST /v1/assistant/query` accepte `{"question":"Quels jeux de données parlent des wilayas ?"}`. La réponse contient `answer_markdown` (Markdown prêt à rendre) et `sources[]` (fiche data-dz, source d'origine, version et licence). Les citations du Markdown sont construites par l'API à partir des identifiants de données connus : le modèle ne choisit pas les URLs.
+Les routes DjazAI nécessitent `Authorization: Bearer <jeton de session Supabase>`. `GET /v1/assistant/quota` renvoie le quota actuel. `POST /v1/assistant/query` accepte une question et jusqu'à 8 messages récents; la réponse contient `answer_markdown`, `sources[]` et `quota`.
 
-Configurer `OPENAI_API_KEY` dans les variables d'environnement du projet Vercel de l'API. Ne jamais exposer cette clé dans le site. `DJAZAI_MODEL` est facultatif (défaut : `gpt-6-luna`). Le fournisseur est appelé via l'API Responses, sans stockage des réponses (`store: false`). Limite : 10 questions par minute et par IP.
+Les comptes membres ont droit à **5 questions par jour civil, selon l'heure d'Alger**. Le rôle `admin` est lu depuis `profils.role` côté serveur et n'a pas de quota journalier. Une limite de débit de 10 requêtes par minute et par IP demeure comme protection contre les rafales. Le compteur journalier est atomique dans Supabase; si la migration manque ou si le compteur est indisponible, l'API refuse la requête sans appeler le fournisseur.
 
-Cette première tranche cherche parmi les jeux publiés et transmet leurs métadonnées et aperçus existants. Elle ne lit pas les fichiers complets et ne calcule pas de totaux sur toutes les lignes : l'assistant doit le dire quand l'aperçu ne suffit pas. Les relances peuvent envoyer `history` (jusqu’à 8 messages) et `dataset_slugs` (jusqu’à 4 fiches citées) ; ces fiches sont rechargées uniquement si elles restent publiées. Pour le frontend, rendre `answer_markdown` avec un renderer Markdown sûr (HTML brut désactivé), puis afficher les entrées de `sources[]` sous forme de cartes cliquables.
+**Migration requise avant le déploiement** : appliquer `supabase/migrations/20261101000012_djazai_quota.sql` du dépôt `data-dz`. Elle crée le compteur et une fonction RPC accessible uniquement à `service_role`. L'API doit avoir `SUPABASE_SECRET_KEY` configurée pour vérifier les rôles et appeler cette fonction.
 
+Configurer `OPENAI_API_KEY` dans les variables d'environnement du projet Vercel de l'API. Ne jamais exposer cette clé dans le site. `DJAZAI_MODEL` est facultatif (défaut : `gpt-6-luna`). Le fournisseur est appelé via l'API Responses, sans stockage des réponses (`store: false`).
+
+La recherche prend en compte les termes de la question, les titres, mots-clés et descriptions des jeux publiés. Les jeux de données déjà cités ne sont gardés que pour une relance courte ou référentielle; une question sur un nouveau thème lance une recherche neuve. L'assistant reçoit les métadonnées et aperçus disponibles, mais ne lit pas les fichiers complets et ne calcule pas de totaux sur toutes les lignes. Il doit le dire quand l'aperçu ne suffit pas.
+  
 ### Données non redistribuables
 Colonne `datasets.diffusion_restreinte` (migration `20261031000011_diffusion_restreinte.sql` du dépôt data-dz, **à appliquer avant de déployer**), écrite à la main dans le SQL Editor (aujourd'hui : `poste`, `protection-civile`). La fiche reste publique (métadonnées, colonnes, nombre de lignes), mais `ressources` est vide, `version.apercu` vaut `null`, et `/data`, `/sample`, `/download` répondent **403 `not_redistributable`** sans jamais lire R2. Le catalogue et la fiche portent `diffusion_restreinte` et `lien_paquet` (paquet npm de la source, tiré de `infos_source.paquet`, sinon de `url_source` si c'est une page npm) : le site l'affiche à la place du téléchargement.
 
