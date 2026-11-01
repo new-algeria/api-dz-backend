@@ -195,7 +195,7 @@ routesPubliques.openapi(
     request: {
       params: ParamsSlug,
       query: z.object({
-        format: z.enum(FORMATS_SORTIE).default("json"),
+        format: z.enum([...FORMATS_SORTIE, "ics"]).default("json"),
         file: NomFichier.optional(),
         inline: z.enum(["1", "0", "true", "false"]).optional().transform((valeur) => valeur === "1" || valeur === "true"),
       }),

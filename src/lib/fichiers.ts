@@ -15,7 +15,7 @@ const FORMATS_SOURCE: FormatSource[] = ["geojson", "json", "csv"];
  * seul le format d'origine reste téléchargeable. Le plus gros fichier actuel pèse 15 Mo.
  */
 export const TAILLE_MAX_CONVERSION = 60 * 1024 * 1024;
-const TYPES_NATIFS: Record<string, string> = { ...TYPES_CONTENU, xml: "application/xml", zip: "application/zip", pdf: "application/pdf" };
+const TYPES_NATIFS: Record<string, string> = { ...TYPES_CONTENU, xml: "application/xml", zip: "application/zip", pdf: "application/pdf", ics: "text/calendar" };
 
 async function fichiersDe(slug: string, nom?: string) {
   const resultat = await chargerFicheInterne(slug);
@@ -63,13 +63,14 @@ async function lireSource(fichier: FichierInterne & { format: FormatSource }): P
  * Format d'origine : lien direct. Sinon : conversion une seule fois par version du fichier,
  * rangée dans `exports/<empreinte>/`, puis lien vers ce fichier.
  */
-export async function lienTelechargement(slug: string, format: FormatSortie, nom?: string, inline = false): Promise<string> {
+export async function lienTelechargement(slug: string, format: FormatSortie | "ics", nom?: string, inline = false): Promise<string> {
   const { fiche, nom: nomCible, versions } = await fichiersDe(slug, nom);
   const nomTelecharge = `${nomCible === slug ? slug : `${slug}-${nomCible}`}.${format}`;
   const options = { expiration: DUREE_LIEN, nomFichier: nomTelecharge, inline, typeContenu: TYPES_NATIFS[format] };
 
   const natif = versions.find((version) => version.format === format);
   if (natif) return lienSigne(natif.cle_stockage, options);
+  if (format === "ics") throw new ErreurApi(422, "not_convertible", "Aucun fichier iCalendar d’origine n’est disponible pour cette donnée.");
 
   const source = sourcePourConversion(versions);
   if ((source.taille_octets ?? 0) > TAILLE_MAX_CONVERSION) {

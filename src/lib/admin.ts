@@ -286,7 +286,7 @@ function versionSuivante(numero: string | undefined): string {
 export interface FichierVersion {
   cle: string;
   nom: string;
-  format: FormatSource;
+  format: FormatSource | "ics";
   principal?: boolean;
 }
 
@@ -316,12 +316,15 @@ export async function publierVersion(
     if (infos.taille > TAILLE_MAX_FICHIER) throw new ErreurApi(413, "file_too_large", `${fichier.nom} dépasse 100 Mo.`);
     const reponse = await lireObjet(fichier.cle);
     const texte = await reponse!.text();
-    const table = lireTable(texte, fichier.format);
+    const table = fichier.format === "ics" ? null : lireTable(texte, fichier.format);
+    if (fichier.format === "ics" && (!/^(?:\uFEFF)?BEGIN:VCALENDAR(?:\r?\n|$)/.test(texte) || !/END:VCALENDAR\s*$/.test(texte))) {
+      throw new ErreurApi(422, "invalid_file", `Fichier iCalendar invalide : ${fichier.nom}.ics.`);
+    }
     analyses.push({
       fichier,
       taille: infos.taille,
       sha256: createHash("sha256").update(texte).digest("hex"),
-      description: fichier.principal ? decrireTable(table) : null,
+      description: fichier.principal ? (table ? decrireTable(table) : { colonnes: [], apercu: [], nbLignes: 0 }) : null,
     });
   }
   const principal = analyses.find((analyse) => analyse.fichier.principal)!.description!;
