@@ -46,22 +46,25 @@ export async function obtenirQuotaDjazAI(userId: string, isAdmin: boolean, conso
     return { is_admin: true, daily_limit: null, remaining: null, resets_at: null };
   }
 
-  let resultat;
+  let donnees: unknown = null;
+  let erreurBase: { code: string; message: string } | null = null;
   try {
-    resultat = await supabaseAdmin().rpc("compter_quota_djazai", {
+    const resultat = await supabaseAdmin().rpc("compter_quota_djazai", {
       p_utilisateur_id: userId,
       p_consommer: consommer,
     });
+    donnees = resultat.data;
+    erreurBase = resultat.error;
   } catch (erreur) {
     console.error("DjazAI : compteur journalier indisponible", erreur);
     throw new ErreurApi(503, "assistant_quota_unavailable", "Le quota DjazAI n’est pas configuré. Réessayez après la mise à jour de la base.");
   }
-  if (resultat.error) {
-    console.error("DjazAI : compteur journalier indisponible", resultat.error.code, resultat.error.message);
+  if (erreurBase) {
+    console.error("DjazAI : compteur journalier indisponible", erreurBase.code, erreurBase.message);
     throw new ErreurApi(503, "assistant_quota_unavailable", "Le quota DjazAI n’est pas configuré. Réessayez après la mise à jour de la base.");
   }
 
-  const ligne = (Array.isArray(resultat.data) ? resultat.data[0] : resultat.data) as LigneQuota | null;
+  const ligne = (Array.isArray(donnees) ? donnees[0] : donnees) as LigneQuota | null;
   if (!ligne || typeof ligne.autorise !== "boolean") {
     throw new ErreurApi(503, "assistant_quota_unavailable", "Le quota DjazAI est temporairement indisponible.");
   }
