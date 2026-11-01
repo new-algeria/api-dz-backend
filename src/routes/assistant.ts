@@ -129,7 +129,10 @@ function normaliserTerme(texte: string): string {
 const MOTS_RELANCE = new Set([
   "date", "dates", "prix", "cout", "tarif", "nombre", "total", "annee", "duree", "periode",
   "source", "version", "licence", "format", "lien", "details", "detail", "exemple", "exemples",
-  "chiffre", "chiffres", "combien", "valeur",
+  "chiffre", "chiffres", "combien", "valeur", "price", "cost", "tariff", "number", "year",
+  "duration", "period", "license", "link", "figure", "figures", "how", "much", "many",
+  "تاريخ", "التاريخ", "سعر", "السعر", "عدد", "المصدر", "الترخيص", "الإصدار", "صيغة", "رابط",
+  "تفاصيل", "مثال", "أمثلة", "كم",
 ]);
 
 function estRelance(question: string, history: Array<{ role: "user" | "assistant"; content: string }>): boolean {
@@ -137,12 +140,12 @@ function estRelance(question: string, history: Array<{ role: "user" | "assistant
   if (!dernierMessageUtilisateur) return false;
 
   const normalisee = normaliserTerme(question);
-  if (/(\bce jeu\b|\bcette donnee\b|\bce dataset\b|\bcette dataset\b|\bca\b|\bcela\b|\bcelui(?:-ci)?\b|\bcelle(?:-ci)?\b|\bson\b|\bsa\b|\bses\b|\bleur\b|\bleurs\b|\bpar rapport a ca\b)/i.test(normalisee)) {
+  if (/(\bce jeu\b|\bcette donnee\b|\bce dataset\b|\bcette dataset\b|\bca\b|\bcela\b|\bcelui(?:-ci)?\b|\bcelle(?:-ci)?\b|\bson\b|\bsa\b|\bses\b|\bleur\b|\bleurs\b|\bpar rapport a ca\b|\bit\b|\bthat\b|\bthose\b|\bsame\b|\bits\b|\btheir\b|\b(?:what|how) about\b|وماذا عن|وهذا|وهذه|وذلك|عنها|عنه)/i.test(normalisee)) {
     return true;
   }
 
   const termes = termesRecherche(question).map(normaliserTerme);
-  const commenceParRelance = /^(et|alors|donc|combien|quelle?|quand|ou|pourquoi|comment)\b/.test(normalisee.trim());
+  const commenceParRelance = /^(et|alors|donc|combien|quelle?|quand|ou|pourquoi|comment|and|what|how|which|when|where|why|كم|ماذا|ما|هل|وماذا|وكيف)\b/.test(normalisee.trim());
   return termes.length > 0 && termes.length <= 2 && commenceParRelance && termes.every((terme) => MOTS_RELANCE.has(terme));
 }
 
