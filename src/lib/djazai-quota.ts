@@ -17,7 +17,7 @@ type LigneQuota = {
 
 /** Vérifie le JWT auprès de Supabase Auth et lit le rôle depuis la base, jamais depuis le client. */
 export async function authentifierDjazAI(authorization: string | undefined) {
-  const token = authorization?.match(/^Bearer\\s+(.+)$/i)?.[1]?.trim();
+  const token = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
   if (!token) {
     throw new ErreurApi(401, "authentication_required", "Connectez-vous pour utiliser DjazAI.");
   }
