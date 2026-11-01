@@ -97,7 +97,10 @@ const ReponseModele = z.object({
 
 function termesRecherche(question: string): string[] {
   const mots = question.toLocaleLowerCase().normalize("NFC").match(/[\p{L}\p{M}\p{N}]+/gu) ?? [];
-  return [...new Set(mots.filter((mot) => mot.length > 2 && !TERMES_VIDES.has(mot)))].slice(0, 4);
+  return [...new Set(mots.filter((mot) => {
+    const sansDiacritiques = mot.normalize("NFD").replace(/\\p{M}/gu, "");
+    return mot.length > 2 && !TERMES_VIDES.has(mot) && !TERMES_VIDES.has(sansDiacritiques);
+  }))].slice(0, 4);
 }
 
 function texteMultilingue(valeur: unknown): string | null {
