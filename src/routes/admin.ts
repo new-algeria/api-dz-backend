@@ -281,7 +281,7 @@ routesAdmin.openapi(
     path: "/v1/admin/datasets/{slug}/versions",
     tags: ["Administration"],
     summary: "Publier une nouvelle version à partir des fichiers envoyés",
-    description: "Chaque fichier est relu et validé. Le fichier principal donne le nombre de lignes, les colonnes et l'aperçu.",
+    description: "Chaque fichier est relu et validé. Le fichier principal donne le nombre de lignes ou d'événements, les colonnes et l'aperçu.",
     security: securite,
     request: {
       params: ParamsSlug,

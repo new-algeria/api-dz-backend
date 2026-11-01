@@ -298,7 +298,7 @@ export interface FichierVersion {
 
 /**
  * Publie une nouvelle version à partir de fichiers déjà envoyés sur R2 (`preparerEnvoi`).
- * Chaque fichier est relu et validé ; le principal fournit lignes, colonnes et aperçu.
+ * Chaque fichier est relu et validé ; le principal fournit son nombre de lignes ou d'événements, ses colonnes et son aperçu.
  */
 export async function publierVersion(
   slug: string,
