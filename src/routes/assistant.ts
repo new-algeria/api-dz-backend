@@ -309,16 +309,16 @@ async function chercherContexte(
 
 function demandeCatalogueComplet(question: string): boolean {
   const q = normaliserTerme(question);
-  const demandeListe = /\\b(liste|lister|list|show|affiche|afficher|donne|donner|montre|montrez|give)\\b/.test(q) ||
+  const demandeListe = /\b(liste|lister|list|show|affiche|afficher|donne|donner|montre|montrez|give)\b/.test(q) ||
     /قائمة|اعرض|اذكر|أعطني|اعطني/.test(q);
-  const demandeTotal = /\\b(tous|toutes|all|every|entire|complet|complete|l'ensemble)\\b/.test(q) ||
+  const demandeTotal = /\b(tous|toutes|all|every|entire|complet|complete|l'ensemble)\b/.test(q) ||
     /كل|جميع|كافة/.test(q);
-  const parleDuCatalogue = /\\b(dataset|datasets|data ?sets?|jeux? de donnees?|donnees?|catalogue)\\b/.test(q) ||
+  const parleDuCatalogue = /\b(dataset|datasets|data ?sets?|jeux? de donnees?|donnees?|catalogue)\b/.test(q) ||
     /بيانات|مجموعات/.test(q);
-  return parleDuCatalogue && demandeTotal && (demandeListe || q.split(/\\s+/).length <= 7);
+  return parleDuCatalogue && demandeTotal && (demandeListe || q.split(/\s+/).length <= 7);
 }
 
-async function listerCatalogueComplet(): Promise<string[]> {
+async function listerCatalogueComplet(): Promise<{ lignes: string[]; total: number }> {
   const taillePage = 100;
   const plafond = 1000;
   const premiere = await listerDonnees({ sort: "name", page: 1, limit: taillePage });
@@ -330,22 +330,23 @@ async function listerCatalogueComplet(): Promise<string[]> {
     for (const resultat of resultats) donnees.push(...resultat.data);
   }
 
-  return donnees.map((donnee) => {
+  const lignes = donnees.map((donnee) => {
     const slug = typeof donnee.slug === "string" ? donnee.slug : "";
     const titre = texteMultilingue(donnee.titre) ?? slug;
-    const etiquette = echapperLienMarkdown(titre.replace(/[\\r\\n]+/g, " ").trim());
-    return `- [${etiquette}](${URL_SITE}/datasets/${encodeURIComponent(slug)})`;
+    const etiquette = echapperLienMarkdown(titre.replace(/[\r\n]+/g, " ").trim());
+    return \`- [\${etiquette}](\${URL_SITE}/datasets/\${encodeURIComponent(slug)})\`;
   });
+  return { lignes, total: premiere.pagination.total };
 }
 
 function reponseCatalogueComplet(lignes: string[], quota: z.infer<typeof QuotaDjazAI>, total: number) {
   const plafondAtteint = total > lignes.length;
-  const entete = `Voici les **${total} jeux de données publiés** du catalogue data-dz :`;
+  const entete = \`Voici les **\${total} jeux de données publiés** du catalogue data-dz :\`;
   const note = plafondAtteint
-    ? `\\n\\nLa liste est tronquée à ${lignes.length} entrées. [Ouvrir le catalogue complet](${URL_SITE}/#catalog).`
-    : `\\n\\n[Explorer le catalogue](${URL_SITE}/#catalog).`;
+    ? \`\\n\\nLa liste est tronquée à \${lignes.length} entrées. [Ouvrir le catalogue complet](\${URL_SITE}/#catalog).\`
+    : \`\\n\\n[Explorer le catalogue](\${URL_SITE}/#catalog).\`;
   return {
-    answer_markdown: lignes.length ? entete + `\\n\\n` + lignes.join(`\\n`) + note : "Le catalogue ne contient aucun jeu de données publié pour le moment.",
+    answer_markdown: lignes.length ? entete + \`\\n\\n\` + lignes.join(\`\\n\`) + note : "Le catalogue ne contient aucun jeu de données publié pour le moment.",
     sources: [],
     quota,
   };
@@ -516,9 +517,8 @@ routesAssistant.openapi(
     const quota = await obtenirQuotaDjazAI(membre.user_id, membre.is_admin, true);
     const { question, history = [], dataset_slugs = [] } = c.req.valid("json");
     if (demandeCatalogueComplet(question)) {
-      const lignes = await listerCatalogueComplet();
-      const pageInitiale = await listerDonnees({ sort: "name", page: 1, limit: 1 });
-      return c.json(reponseCatalogueComplet(lignes, quota, pageInitiale.pagination.total), 200);
+      const { lignes, total } = await listerCatalogueComplet();
+      return c.json(reponseCatalogueComplet(lignes, quota, total), 200);
     }
     const contexte = await chercherContexte(question, dataset_slugs, history);
     if (!contexte.length) return c.json(reponseSansResultat(quota), 200);
