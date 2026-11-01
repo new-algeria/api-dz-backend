@@ -202,7 +202,7 @@ async function chercherContexte(question: string, slugsPrecedents: string[]): Pr
 
       return {
         id: slug,
-        titre: texteMultilingue(fiche.titre) ?? ligne.slug,
+        titre: texteMultilingue(fiche.titre) ?? slug,
         url: URL_SITE + "/datasets/" + encodeURIComponent(slug),
         description: texteMultilingue(fiche.description),
         categorie: typeof fiche.categorie_slug === "string" ? fiche.categorie_slug : null,
