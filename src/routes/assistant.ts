@@ -334,19 +334,19 @@ async function listerCatalogueComplet(): Promise<{ lignes: string[]; total: numb
     const slug = typeof donnee.slug === "string" ? donnee.slug : "";
     const titre = texteMultilingue(donnee.titre) ?? slug;
     const etiquette = echapperLienMarkdown(titre.replace(/[\r\n]+/g, " ").trim());
-    return \`- [\${etiquette}](\${URL_SITE}/datasets/\${encodeURIComponent(slug)})\`;
+    return "- [" + etiquette + "](" + URL_SITE + "/datasets/" + encodeURIComponent(slug) + ")";
   });
   return { lignes, total: premiere.pagination.total };
 }
 
 function reponseCatalogueComplet(lignes: string[], quota: z.infer<typeof QuotaDjazAI>, total: number) {
   const plafondAtteint = total > lignes.length;
-  const entete = \`Voici les **\${total} jeux de données publiés** du catalogue data-dz :\`;
+  const entete = "Voici les **" + total + " jeux de données publiés** du catalogue data-dz :";
   const note = plafondAtteint
-    ? \`\\n\\nLa liste est tronquée à \${lignes.length} entrées. [Ouvrir le catalogue complet](\${URL_SITE}/#catalog).\`
-    : \`\\n\\n[Explorer le catalogue](\${URL_SITE}/#catalog).\`;
+    ? "\n\nLa liste est tronquée à " + lignes.length + " entrées. [Ouvrir le catalogue complet](" + URL_SITE + "/#catalog)."
+    : "\n\n[Explorer le catalogue](" + URL_SITE + "/#catalog).";
   return {
-    answer_markdown: lignes.length ? entete + \`\\n\\n\` + lignes.join(\`\\n\`) + note : "Le catalogue ne contient aucun jeu de données publié pour le moment.",
+    answer_markdown: lignes.length ? entete + "\n\n" + lignes.join("\n") + note : "Le catalogue ne contient aucun jeu de données publié pour le moment.",
     sources: [],
     quota,
   };
