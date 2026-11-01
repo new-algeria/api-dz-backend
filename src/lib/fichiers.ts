@@ -63,14 +63,18 @@ async function lireSource(fichier: FichierInterne & { format: FormatSource }): P
  * Format d'origine : lien direct. Sinon : conversion une seule fois par version du fichier,
  * rangée dans `exports/<empreinte>/`, puis lien vers ce fichier.
  */
-export async function lienTelechargement(slug: string, format: FormatSortie | "ics", nom?: string, inline = false): Promise<string> {
+type FormatNatif = "ics" | "pdf" | "xml" | "zip";
+
+export async function lienTelechargement(slug: string, format: FormatSortie | FormatNatif, nom?: string, inline = false): Promise<string> {
   const { fiche, nom: nomCible, versions } = await fichiersDe(slug, nom);
   const nomTelecharge = `${nomCible === slug ? slug : `${slug}-${nomCible}`}.${format}`;
   const options = { expiration: DUREE_LIEN, nomFichier: nomTelecharge, inline, typeContenu: TYPES_NATIFS[format] };
 
   const natif = versions.find((version) => version.format === format);
   if (natif) return lienSigne(natif.cle_stockage, options);
-  if (format === "ics") throw new ErreurApi(422, "not_convertible", "Aucun fichier iCalendar d’origine n’est disponible pour cette donnée.");
+  if (["ics", "pdf", "xml", "zip"].includes(format)) {
+    throw new ErreurApi(422, "not_convertible", `Aucun fichier ${format.toUpperCase()} d’origine n’est disponible pour cette donnée.`);
+  }
 
   const source = sourcePourConversion(versions);
   if ((source.taille_octets ?? 0) > TAILLE_MAX_CONVERSION) {
