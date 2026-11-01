@@ -47,11 +47,11 @@ const corsPublic = cors({
 let corsAdmin: ReturnType<typeof cors> | undefined;
 let corsAssistant: ReturnType<typeof cors> | undefined;
 app.use("*", (c, next) => {
-  if (c.req.path === "/v1/assistant/query") {
+  if (c.req.path === "/v1/assistant/query" || c.req.path === "/v1/assistant/quota") {
     corsAssistant ??= cors({
       origin: lireConfig().ORIGINES_ADMIN,
-      allowMethods: ["POST", "OPTIONS"],
-      allowHeaders: ["Content-Type"],
+      allowMethods: ["GET", "POST", "OPTIONS"],
+      allowHeaders: ["Authorization", "Content-Type"],
       exposeHeaders: ["RateLimit", "RateLimit-Policy", "Retry-After", "X-Request-Id"],
       maxAge: 600,
     });
