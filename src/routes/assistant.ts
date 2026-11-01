@@ -114,15 +114,15 @@ const ReponseModele = z.object({
 });
 
 function termesRecherche(question: string): string[] {
-  const mots = question.toLocaleLowerCase().normalize("NFC").match(/[a-z0-9\\u00c0-\\u024f\\u1e00-\\u1eff\\u0600-\\u06ff\\u0750-\\u077f]+/gi) ?? [];
+  const mots = question.toLocaleLowerCase().normalize("NFC").match(/[a-z0-9\u00c0-\u024f\u1e00-\u1eff\u0600-\u06ff\u0750-\u077f]+/gi) ?? [];
   return [...new Set(mots.filter((mot) => {
-    const sansDiacritiques = mot.normalize("NFD").replace(/[\\u0300-\\u036f\\u064b-\\u065f\\u0670]/g, "");
+    const sansDiacritiques = mot.normalize("NFD").replace(/[\u0300-\u036f\u064b-\u065f\u0670]/g, "");
     return mot.length > 2 && !TERMES_VIDES.has(mot) && !TERMES_VIDES.has(sansDiacritiques);
   }))].slice(0, 6);
 }
 
 function normaliserTerme(texte: string): string {
-  return texte.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLocaleLowerCase();
+  return texte.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase();
 }
 
 const MOTS_RELANCE = new Set([
@@ -136,12 +136,12 @@ function estRelance(question: string, history: Array<{ role: "user" | "assistant
   if (!dernierMessageUtilisateur) return false;
 
   const normalisee = normaliserTerme(question);
-  if (/(\\bce jeu\\b|\\bcette donnee\\b|\\bce dataset\\b|\\bcette dataset\\b|\\bca\\b|\\bcela\\b|\\bcelui(?:-ci)?\\b|\\bcelle(?:-ci)?\\b|\\bson\\b|\\bsa\\b|\\bses\\b|\\bleur\\b|\\bleurs\\b|\\bpar rapport a ca\\b)/i.test(normalisee)) {
+  if (/(\bce jeu\b|\bcette donnee\b|\bce dataset\b|\bcette dataset\b|\bca\b|\bcela\b|\bcelui(?:-ci)?\b|\bcelle(?:-ci)?\b|\bson\b|\bsa\b|\bses\b|\bleur\b|\bleurs\b|\bpar rapport a ca\b)/i.test(normalisee)) {
     return true;
   }
 
   const termes = termesRecherche(question).map(normaliserTerme);
-  const commenceParRelance = /^(et|alors|donc|combien|quelle?|quand|ou|pourquoi|comment)\\b/.test(normalisee.trim());
+  const commenceParRelance = /^(et|alors|donc|combien|quelle?|quand|ou|pourquoi|comment)\b/.test(normalisee.trim());
   return termes.length > 0 && termes.length <= 2 && commenceParRelance && termes.every((terme) => MOTS_RELANCE.has(terme));
 }
 
