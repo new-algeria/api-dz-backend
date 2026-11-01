@@ -35,9 +35,18 @@ npm run typecheck
 | `GET /v1/datasets/:slug/sample?file=&n=&random=` | Échantillon | 30 min | 30/min |
 | `GET /v1/datasets/:slug/download?format=csv\|xlsx\|json\|geojson&file=&inline=` | 302 vers un lien R2 signé (10 min) | 60 s | 30/min |
 | `GET /v1/categories`, `/v1/licences`, `/v1/sources`, `/v1/stats` | Référentiels | 1 h | 120/min |
+| `POST /v1/assistant/query` | DjazAI : réponse Markdown et sources structurées à partir du catalogue publié et des aperçus | aucun | 10/min |
 | `/v1/admin/*` | Administration (voir plus bas) | aucun | 60/min |
 
 Les réponses servies par le CDN ne comptent pas dans les limites. Les erreurs suivent la RFC 9457 (`application/problem+json`, avec `code` et `requestId`).
+
+### DjazAI (première version)
+
+`POST /v1/assistant/query` accepte `{"question":"Quels jeux de données parlent des wilayas ?"}`. La réponse contient `answer_markdown` (Markdown prêt à rendre) et `sources[]` (fiche data-dz, source d'origine, version et licence). Les citations du Markdown sont construites par l'API à partir des identifiants de données connus : le modèle ne choisit pas les URLs.
+
+Configurer `OPENAI_API_KEY` dans les variables d'environnement du projet Vercel de l'API. Ne jamais exposer cette clé dans le site. `DJAZAI_MODEL` est facultatif (défaut : `gpt-6-luna`). Le fournisseur est appelé via l'API Responses, sans stockage des réponses (`store: false`). Limite : 10 questions par minute et par IP.
+
+Cette première tranche cherche parmi les jeux publiés et transmet leurs métadonnées et aperçus existants. Elle ne lit pas les fichiers complets et ne calcule pas de totaux sur toutes les lignes : l'assistant doit le dire quand l'aperçu ne suffit pas. Pour le frontend, rendre `answer_markdown` avec un renderer Markdown sûr (HTML brut désactivé), puis afficher les entrées de `sources[]` sous forme de cartes cliquables.
 
 ### Données non redistribuables
 Colonne `datasets.diffusion_restreinte` (migration `20261031000011_diffusion_restreinte.sql` du dépôt data-dz, **à appliquer avant de déployer**), écrite à la main dans le SQL Editor (aujourd'hui : `poste`, `protection-civile`). La fiche reste publique (métadonnées, colonnes, nombre de lignes), mais `ressources` est vide, `version.apercu` vaut `null`, et `/data`, `/sample`, `/download` répondent **403 `not_redistributable`** sans jamais lire R2. Le catalogue et la fiche portent `diffusion_restreinte` et `lien_paquet` (paquet npm de la source, tiré de `infos_source.paquet`, sinon de `url_source` si c'est une page npm) : le site l'affiche à la place du téléchargement.
@@ -99,7 +108,7 @@ curl -X POST "$API/v1/admin/datasets/pharmacies/versions" -H "$AUTH" -H "Content
 
 ## Mise en production (une fois)
 
-1. **Vercel** (projet déjà relié à `api.data-dz.com`) : Settings → Build & Deployment → Framework Preset **Hono** (aussi fixé par `vercel.json`), sans commande de build ni dossier de sortie personnalisés. Settings → Functions → **région** = celle de la base Supabase. Ajouter les variables de `.env.example`.
+1. **Vercel** (projet déjà relié à `api.data-dz.com`) : Settings → Build & Deployment → Framework Preset **Hono** (aussi fixé par `vercel.json`), sans commande de build ni dossier de sortie personnalisés. Settings → Functions → **région** = celle de la base Supabase. Ajouter les variables de `.env.example`, dont `OPENAI_API_KEY` pour activer DjazAI.
 2. **Upstash** (recommandé) : Vercel → Storage → Upstash Redis, relié au projet.
 3. **Vercel Firewall** → règle *Rate limit* (1 incluse en Hobby) : par IP, 300 requêtes / 60 s, action 429, devant toute l'API.
 4. **R2 → bucket `data-dz` → Settings → CORS** :

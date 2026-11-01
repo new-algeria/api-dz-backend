@@ -22,6 +22,9 @@ const schemaEnv = z.object({
     .transform((valeur) => valeur.split(",").map((origine) => origine.trim()).filter(Boolean)),
   CLE_SYNCHRO: z.string().min(32).optional(),
 
+  OPENAI_API_KEY: z.string().min(1).optional(),
+  DJAZAI_MODEL: z.string().trim().min(1).default("gpt-6-luna"),
+
   UPSTASH_REDIS_REST_URL: z.url().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
 });

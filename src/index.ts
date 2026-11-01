@@ -14,6 +14,7 @@ import { mettreEnCache } from "./lib/cache-http.js";
 import { ErreurApi, RedirectionDonnee, reponseProbleme } from "./lib/erreurs.js";
 import { LIMITES } from "./middleware/limite-debit.js";
 import { routesAdmin } from "./routes/admin.js";
+import { routesAssistant } from "./routes/assistant.js";
 import { routesPubliques } from "./routes/public.js";
 import type { EnvApp } from "./types.js";
 
@@ -44,7 +45,18 @@ const corsPublic = cors({
   maxAge: 86400,
 });
 let corsAdmin: ReturnType<typeof cors> | undefined;
+let corsAssistant: ReturnType<typeof cors> | undefined;
 app.use("*", (c, next) => {
+  if (c.req.path === "/v1/assistant/query") {
+    corsAssistant ??= cors({
+      origin: lireConfig().ORIGINES_ADMIN,
+      allowMethods: ["POST", "OPTIONS"],
+      allowHeaders: ["Content-Type"],
+      exposeHeaders: ["RateLimit", "RateLimit-Policy", "Retry-After", "X-Request-Id"],
+      maxAge: 600,
+    });
+    return corsAssistant(c, next);
+  }
   if (!c.req.path.startsWith("/v1/admin")) return corsPublic(c, next);
   corsAdmin ??= cors({
     origin: lireConfig().ORIGINES_ADMIN,
@@ -62,7 +74,7 @@ app.get("/", (c) => {
   mettreEnCache(c, "documentation");
   return c.json({
     nom: "API data-dz",
-    description: "Données ouvertes sur l'Algérie : catalogue, enregistrements, conversions CSV / XLSX / JSON / GeoJSON.",
+    description: "Données ouvertes sur l'Algérie : catalogue, enregistrements, conversions et assistant DjazAI.",
     documentation: `${lireConfig().URL_API}/docs`,
     openapi: `${lireConfig().URL_API}/openapi.json`,
     site: "https://data-dz.com",
@@ -72,6 +84,7 @@ app.get("/", (c) => {
       "/v1/datasets/protection-civile",
       "/v1/datasets/protection-civile/data?limit=10",
       "/v1/datasets/protection-civile/download?format=csv",
+      "/v1/assistant/query",
     ],
   });
 });
@@ -82,6 +95,7 @@ app.get("/health", (c) => {
 });
 
 app.route("/", routesPubliques);
+app.route("/", routesAssistant);
 app.route("/", routesAdmin);
 
 // Avant doc31 : son gestionnaire ne passe pas la main, un middleware déclaré après ne s'exécuterait jamais.
@@ -105,6 +119,7 @@ app.doc31("/openapi.json", (c) => ({
   tags: [
     { name: "Données", description: "Catalogue, fiches, enregistrements et téléchargements" },
     { name: "Référentiels", description: "Catégories, licences, sources, chiffres" },
+    { name: "DjazAI", description: "Assistant du catalogue, avec réponse Markdown et sources structurées" },
     { name: "Administration", description: "Réservé aux administrateurs de data-dz et au script de synchronisation" },
   ],
 }));
