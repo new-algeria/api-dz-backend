@@ -145,7 +145,7 @@ function estRelance(question: string, history: Array<{ role: "user" | "assistant
   }
 
   const termes = termesRecherche(question).map(normaliserTerme);
-  const commenceParRelance = /^(et|alors|donc|combien|quelle?|quand|ou|pourquoi|comment|and|what|how|which|when|where|why|كم|ماذا|ما|هل|وماذا|وكيف)(?=\\s|$)/.test(normalisee.trim());
+  const commenceParRelance = /^(et|alors|donc|combien|quelle?|quand|ou|pourquoi|comment|and|what|how|which|when|where|why|كم|ماذا|ما|هل|وماذا|وكيف)(?=\s|$)/.test(normalisee.trim());
   return termes.length > 0 && termes.length <= 2 && commenceParRelance && termes.every((terme) => MOTS_RELANCE.has(terme));
 }
 
