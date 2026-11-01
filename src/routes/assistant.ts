@@ -72,6 +72,7 @@ type ResumeRecherche = {
   titre?: Record<string, unknown> | null;
   description?: Record<string, unknown> | null;
   mots_cles?: string[] | null;
+  score?: number | null;
 };
 
 type ContexteDonnee = {
@@ -235,7 +236,7 @@ async function chercherContexte(
       return {
         slug: ligne.slug,
         score: hits.size + scoreTitre * 4 + scoreCles * 3 + scoreDescription,
-        populaires: typeof (ligne as Record<string, unknown>).score === "number" ? (ligne as Record<string, number>).score : 0,
+        populaires: ligne.score ?? 0,
       };
     })
     .sort((a, b) => b.score - a.score || b.populaires - a.populaires || a.slug.localeCompare(b.slug));
