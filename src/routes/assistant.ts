@@ -1,7 +1,7 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { bodyLimit } from "hono/body-limit";
 import { lireConfig } from "../config.js";
-import { URL_SITE, chargerFicheInterne, listerDonnees, versFiche } from "../lib/catalogue.js";
+import { URL_SITE, chargerFicheInterne, listerDonnees } from "../lib/catalogue.js";
 import { ErreurApi } from "../lib/erreurs.js";
 import { limiteDebit } from "../middleware/limite-debit.js";
 import { Probleme, reponsesErreur } from "../schemas.js";
@@ -96,11 +96,16 @@ const ReponseModele = z.object({
 });
 
 function termesRecherche(question: string): string[] {
-  const mots = question.toLocaleLowerCase().normalize("NFC").match(/[\p{L}\p{M}\p{N}]+/gu) ?? [];
+  const mots = question.toLocaleLowerCase().normalize("NFC").match(/[a-z0-9\u00c0-\u024f\u1e00-\u1eff\u0600-\u06ff\u0750-\u077f]+/gi) ?? [];
   return [...new Set(mots.filter((mot) => {
-    const sansDiacritiques = mot.normalize("NFD").replace(/\\p{M}/gu, "");
+    const sansDiacritiques = mot.normalize("NFD").replace(/[\u0300-\u036f\u064b-\u065f\u0670]/g, "");
     return mot.length > 2 && !TERMES_VIDES.has(mot) && !TERMES_VIDES.has(sansDiacritiques);
   }))].slice(0, 4);
+}
+
+function objet(valeur: unknown): Record<string, unknown> | null {
+  if (Array.isArray(valeur)) return objet(valeur[0]);
+  return valeur && typeof valeur === "object" ? (valeur as Record<string, unknown>) : null;
 }
 
 function texteMultilingue(valeur: unknown): string | null {
@@ -173,12 +178,14 @@ async function chercherContexte(question: string): Promise<ContexteDonnee[]> {
     candidates.map(async ({ ligne }) => {
       const detail = await chargerFicheInterne(ligne.slug);
       if (!detail) return null;
-      const fiche = versFiche(detail.fiche, []);
-      const version = fiche.version as Record<string, unknown> | null;
-      const source = fiche.source as Record<string, unknown> | null;
-      const licence = fiche.licence as Record<string, unknown> | null;
-      const colonnes = Array.isArray(version?.colonnes)
-        ? version.colonnes.slice(0, 80).map((colonne) => {
+      const fiche = detail.fiche as unknown as Record<string, unknown>;
+      const version = objet(fiche.versions);
+      const source = objet(fiche.sources);
+      const licence = objet(fiche.licences);
+      const restreinte = fiche.diffusion_restreinte === true;
+      const colonnesVersion = version?.colonnes;
+      const colonnes = Array.isArray(colonnesVersion)
+        ? colonnesVersion.slice(0, 80).map((colonne: unknown) => {
             if (typeof colonne === "string") return colonne;
             if (colonne && typeof colonne === "object" && typeof (colonne as Record<string, unknown>).nom === "string") {
               return (colonne as Record<string, unknown>).nom as string;
@@ -186,6 +193,9 @@ async function chercherContexte(question: string): Promise<ContexteDonnee[]> {
             return "";
           }).filter(Boolean)
         : [];
+      const wilayas = Array.isArray(fiche.wilayas)
+        ? fiche.wilayas.filter((x: unknown): x is string => typeof x === "string")
+        : null;
 
       return {
         id: ligne.slug,
@@ -193,15 +203,15 @@ async function chercherContexte(question: string): Promise<ContexteDonnee[]> {
         url: URL_SITE + "/datasets/" + encodeURIComponent(ligne.slug),
         description: texteMultilingue(fiche.description),
         categorie: typeof fiche.categorie_slug === "string" ? fiche.categorie_slug : null,
-        wilayas: Array.isArray(fiche.wilayas) ? fiche.wilayas.filter((x): x is string => typeof x === "string") : null,
+        wilayas,
         source_nom: typeof source?.nom === "string" ? source.nom : null,
         source_url: urlHttp(fiche.url_source) ?? urlHttp(source?.url),
         mis_a_jour_le: typeof fiche.mis_a_jour_le === "string" ? fiche.mis_a_jour_le : null,
         version: typeof version?.numero === "string" ? version.numero : null,
         nb_lignes: typeof version?.nb_lignes === "number" ? version.nb_lignes : null,
         colonnes,
-        diffusion_restreinte: fiche.diffusion_restreinte === true,
-        apercu: fiche.diffusion_restreinte === true ? null : texteApercu(version?.apercu),
+        diffusion_restreinte: restreinte,
+        apercu: restreinte ? null : texteApercu(version?.apercu),
         licence_code: typeof licence?.code === "string" ? licence.code : null,
         licence_url: urlHttp(licence?.url),
       } satisfies ContexteDonnee;
