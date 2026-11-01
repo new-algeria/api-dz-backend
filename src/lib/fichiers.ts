@@ -65,6 +65,10 @@ async function lireSource(fichier: FichierInterne & { format: FormatSource }): P
  */
 type FormatNatif = "ics" | "pdf" | "xml" | "zip";
 
+function estFormatNatif(format: FormatSortie | FormatNatif): format is FormatNatif {
+  return format === "ics" || format === "pdf" || format === "xml" || format === "zip";
+}
+
 export async function lienTelechargement(slug: string, format: FormatSortie | FormatNatif, nom?: string, inline = false): Promise<string> {
   const { fiche, nom: nomCible, versions } = await fichiersDe(slug, nom);
   const nomTelecharge = `${nomCible === slug ? slug : `${slug}-${nomCible}`}.${format}`;
@@ -72,7 +76,7 @@ export async function lienTelechargement(slug: string, format: FormatSortie | Fo
 
   const natif = versions.find((version) => version.format === format);
   if (natif) return lienSigne(natif.cle_stockage, options);
-  if (["ics", "pdf", "xml", "zip"].includes(format)) {
+  if (estFormatNatif(format)) {
     throw new ErreurApi(422, "not_convertible", `Aucun fichier ${format.toUpperCase()} d’origine n’est disponible pour cette donnée.`);
   }
 
