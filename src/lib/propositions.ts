@@ -15,9 +15,9 @@ import { slugDepuisTitre } from "./textes.js";
 
 const BUCKET_SOUMISSIONS = "soumissions";
 const SOURCE_COMMUNAUTE = "communaute";
-const TYPES_CONTENU: Record<FormatSource, string> = { json: "application/json", geojson: "application/geo+json", csv: "text/csv" };
-/** Ordre de préférence du fichier principal : la carte d'abord, puis un tableau. */
-const PRIORITE_PRINCIPAL: Record<FormatSource, number> = { geojson: 0, csv: 1, json: 2 };
+const TYPES_CONTENU: Record<FormatProposition, string> = { json: "application/json", geojson: "application/geo+json", csv: "text/csv", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ics: "text/calendar" };
+/** Ordre de préférence du fichier principal : la carte, le tableau, puis le calendrier. */
+const PRIORITE_PRINCIPAL: Record<FormatProposition, number> = { geojson: 0, csv: 1, json: 2, xlsx: 3, ics: 4 };
 
 interface Soumission {
   id: string;
@@ -53,7 +53,7 @@ export function nomLogique(nomOriginal: string): string {
   );
 }
 
-export type FormatProposition = FormatSource | "xlsx";
+export type FormatProposition = FormatSource | "xlsx" | "ics";
 
 /** Format publiable d'un fichier joint ; `null` pour ceux que le catalogue ne sait pas lire (pdf, zip, xml…). */
 export function formatProposition(nomOriginal: string, typeMime: string | null): FormatProposition | null {
@@ -62,6 +62,7 @@ export function formatProposition(nomOriginal: string, typeMime: string | null):
   if (extension === "json") return "json";
   if (extension === "csv") return "csv";
   if (extension === "xlsx") return "xlsx";
+  if (extension === "ics" || typeMime === "text/calendar" || typeMime === "application/ics") return "ics";
   return null;
 }
 
@@ -114,7 +115,7 @@ export function xlsxEnCsv(octets: ArrayBuffer): string {
 /** Copie les fichiers lisibles de la proposition (bucket privé Supabase) vers le dossier R2 de la donnée. */
 async function copierFichiers(soumission: Soumission, slug: string) {
   const dossier = `${prefixeDonnee(slug)}${Date.now()}/`;
-  const fichiers: { cle: string; nom: string; format: FormatSource; principal: boolean }[] = [];
+  const fichiers: { cle: string; nom: string; format: FormatSource | "ics"; principal: boolean }[] = [];
   const ignores: string[] = [];
   const nomsPris = new Set<string>();
 
@@ -130,7 +131,7 @@ async function copierFichiers(soumission: Soumission, slug: string) {
     const { data: blob, error } = await supabaseAdmin().storage.from(BUCKET_SOUMISSIONS).download(joint.chemin_stockage);
     if (error || !blob) throw new ErreurApi(502, "storage_error", `Fichier illisible : ${joint.nom_original}.`);
 
-    const formatFinal: FormatSource = format === "xlsx" ? "csv" : format;
+    const formatFinal: FormatSource | "ics" = format === "xlsx" ? "csv" : format;
     const contenu = format === "xlsx" ? xlsxEnCsv(await blob.arrayBuffer()) : new Uint8Array(await blob.arrayBuffer());
     let nom = nomLogique(joint.nom_original);
     for (let n = 2; nomsPris.has(`${nom}.${formatFinal}`); n++) nom = `${nomLogique(joint.nom_original).slice(0, 95)}-${n}`;
@@ -145,7 +146,7 @@ async function copierFichiers(soumission: Soumission, slug: string) {
     throw new ErreurApi(
       422,
       "no_usable_file",
-      "Aucun fichier CSV, JSON, GeoJSON ou Excel dans la proposition : créez la donnée depuis la gestion des données."
+      "Aucun fichier CSV, JSON, GeoJSON, Excel ou ICS dans la proposition : créez la donnée depuis la gestion des données."
     );
   }
   const principal = fichiers.reduce((meilleur, fichier) => (PRIORITE_PRINCIPAL[fichier.format] < PRIORITE_PRINCIPAL[meilleur.format] ? fichier : meilleur));
