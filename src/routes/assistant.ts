@@ -3,6 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import { lireConfig } from "../config.js";
 import { URL_SITE, chargerFicheInterne, listerDonnees } from "../lib/catalogue.js";
 import { ErreurApi } from "../lib/erreurs.js";
+import { authentifierDjazAI, obtenirQuotaDjazAI } from "../lib/djazai-quota.js";
 import { limiteDebit } from "../middleware/limite-debit.js";
 import { Probleme, reponsesErreur } from "../schemas.js";
 import type { EnvApp } from "../types.js";
@@ -31,9 +32,17 @@ const SourceDjazAI = z.object({
   licence_url: z.url().nullable(),
 }).openapi("SourceDjazAI");
 
+const QuotaDjazAI = z.object({
+  is_admin: z.boolean(),
+  daily_limit: z.number().nullable(),
+  remaining: z.number().nullable(),
+  resets_at: z.string().nullable(),
+}).openapi("QuotaDjazAI");
+
 const ReponseDjazAI = z.object({
   answer_markdown: z.string(),
   sources: z.array(SourceDjazAI),
+  quota: QuotaDjazAI,
 }).openapi("ReponseDjazAI");
 
 const limiteCorps = bodyLimit({
@@ -44,6 +53,7 @@ const limiteCorps = bodyLimit({
 });
 
 routesAssistant.use("/v1/assistant/query", limiteDebit("assistant"), limiteCorps);
+routesAssistant.use("/v1/assistant/quota", limiteDebit("assistant"));
 
 const TERMES_VIDES = new Set([
   "alors", "avec", "avoir", "bonjour", "dans", "depuis", "des", "donc", "elle", "elles", "est", "etait", "etre",
@@ -51,6 +61,9 @@ const TERMES_VIDES = new Set([
   "que", "quel", "quelle", "quels", "quelles", "qui", "quoi", "sont", "sur", "tout", "tous", "une", "vous",
   "votre", "comment", "donnee", "donnees", "dataset", "datasets", "data", "dz", "les", "des", "par", "pas",
   "the", "and", "for", "with", "from", "what", "when", "where", "which", "about", "are", "can", "does",
+  "cherche", "chercher", "recherche", "rechercher", "disponible", "disponibles", "parle", "parler", "parlent",
+  "concerne", "concernent", "contient", "contiennent", "trouve", "trouver", "existe", "existent", "montre",
+  "montres", "donne", "donner", "savoir", "sais", "peux", "peut", "svp", "stp",
   "في", "من", "على", "عن", "الى", "إلى", "ما", "ماذا", "هل", "هذا", "هذه", "التي", "الذي", "مع", "كيف",
 ]);
 
@@ -101,11 +114,35 @@ const ReponseModele = z.object({
 });
 
 function termesRecherche(question: string): string[] {
-  const mots = question.toLocaleLowerCase().normalize("NFC").match(/[a-z0-9\u00c0-\u024f\u1e00-\u1eff\u0600-\u06ff\u0750-\u077f]+/gi) ?? [];
+  const mots = question.toLocaleLowerCase().normalize("NFC").match(/[a-z0-9\\u00c0-\\u024f\\u1e00-\\u1eff\\u0600-\\u06ff\\u0750-\\u077f]+/gi) ?? [];
   return [...new Set(mots.filter((mot) => {
-    const sansDiacritiques = mot.normalize("NFD").replace(/[\u0300-\u036f\u064b-\u065f\u0670]/g, "");
+    const sansDiacritiques = mot.normalize("NFD").replace(/[\\u0300-\\u036f\\u064b-\\u065f\\u0670]/g, "");
     return mot.length > 2 && !TERMES_VIDES.has(mot) && !TERMES_VIDES.has(sansDiacritiques);
-  }))].slice(0, 4);
+  }))].slice(0, 6);
+}
+
+function normaliserTerme(texte: string): string {
+  return texte.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLocaleLowerCase();
+}
+
+const MOTS_RELANCE = new Set([
+  "date", "dates", "prix", "cout", "tarif", "nombre", "total", "annee", "duree", "periode",
+  "source", "version", "licence", "format", "lien", "details", "detail", "exemple", "exemples",
+  "chiffre", "chiffres", "combien", "valeur",
+]);
+
+function estRelance(question: string, history: Array<{ role: "user" | "assistant"; content: string }>): boolean {
+  const dernierMessageUtilisateur = history.filter((message) => message.role === "user").at(-1)?.content;
+  if (!dernierMessageUtilisateur) return false;
+
+  const normalisee = normaliserTerme(question);
+  if (/(\\bce jeu\\b|\\bcette donnee\\b|\\bce dataset\\b|\\bcette dataset\\b|\\bca\\b|\\bcela\\b|\\bcelui(?:-ci)?\\b|\\bcelle(?:-ci)?\\b|\\bson\\b|\\bsa\\b|\\bses\\b|\\bleur\\b|\\bleurs\\b|\\bpar rapport a ca\\b)/i.test(normalisee)) {
+    return true;
+  }
+
+  const termes = termesRecherche(question).map(normaliserTerme);
+  const commenceParRelance = /^(et|alors|donc|combien|quelle?|quand|ou|pourquoi|comment)\\b/.test(normalisee.trim());
+  return termes.length > 0 && termes.length <= 2 && commenceParRelance && termes.every((terme) => MOTS_RELANCE.has(terme));
 }
 
 function objet(valeur: unknown): Record<string, unknown> | null {
@@ -154,27 +191,60 @@ function nettoyerMarkdown(texte: string): string {
     .trim();
 }
 
-async function chercherContexte(question: string, slugsPrecedents: string[]): Promise<ContexteDonnee[]> {
-  const termes = termesRecherche(question);
+async function chercherContexte(
+  question: string,
+  slugsPrecedents: string[],
+  history: Array<{ role: "user" | "assistant"; content: string }>
+): Promise<ContexteDonnee[]> {
+  const relance = estRelance(question, history);
+  const dernierMessageUtilisateur = history.filter((message) => message.role === "user").at(-1)?.content;
+  const termesQuestion = termesRecherche(question);
+  const termes = termesQuestion.length
+    ? termesQuestion
+    : relance && dernierMessageUtilisateur
+      ? termesRecherche(dernierMessageUtilisateur)
+      : [];
+  if (!termes.length && !relance) return [];
+
+  const recherches = [...new Set([
+    ...(termes.length > 1 ? [termes.join(" ")] : []),
+    ...termes.slice(0, 5),
+  ])];
   const resultats = await Promise.all(
-    termes.map((q) => listerDonnees({ q, sort: "top", page: 1, limit: 8 }))
+    recherches.map((q) => listerDonnees({ q, sort: "top", page: 1, limit: q.includes(" ") ? 12 : 8 }))
   );
-  const correspondances = new Map<string, Set<string>>();
+  const correspondances = new Map<string, { ligne: ResumeRecherche; hits: Set<string> }>();
   for (let index = 0; index < resultats.length; index += 1) {
-    const terme = termes[index];
+    const termesRequete = recherches[index].split(" ");
     for (const ligne of resultats[index].data as ResumeRecherche[]) {
-      const hits = correspondances.get(ligne.slug) ?? new Set<string>();
-      hits.add(terme);
-      correspondances.set(ligne.slug, hits);
+      const candidat = correspondances.get(ligne.slug) ?? { ligne, hits: new Set<string>() };
+      for (const terme of termesRequete) candidat.hits.add(normaliserTerme(terme));
+      correspondances.set(ligne.slug, candidat);
     }
   }
 
-  const priorises = [...new Set(slugsPrecedents)].slice(0, 4);
-  const recherches = [...correspondances.entries()]
-    .sort((a, b) => b[1].size - a[1].size)
-    .map(([slug]) => slug)
-    .filter((slug) => !priorises.includes(slug));
-  const slugs = [...priorises, ...recherches.slice(0, 4 - priorises.length)];
+  const termesNormalises = termes.map(normaliserTerme);
+  const classees = [...correspondances.values()]
+    .map(({ ligne, hits }) => {
+      const titre = normaliserTerme(texteMultilingue(ligne.titre) ?? "");
+      const description = normaliserTerme(texteMultilingue(ligne.description) ?? "");
+      const motsCles = normaliserTerme(Array.isArray(ligne.mots_cles) ? ligne.mots_cles.join(" ") : "");
+      const scoreTitre = termesNormalises.filter((terme) => titre.includes(terme)).length;
+      const scoreCles = termesNormalises.filter((terme) => motsCles.includes(terme)).length;
+      const scoreDescription = termesNormalises.filter((terme) => description.includes(terme)).length;
+      return {
+        slug: ligne.slug,
+        score: hits.size + scoreTitre * 4 + scoreCles * 3 + scoreDescription,
+        populaires: typeof (ligne as Record<string, unknown>).score === "number" ? (ligne as Record<string, number>).score : 0,
+      };
+    })
+    .sort((a, b) => b.score - a.score || b.populaires - a.populaires || a.slug.localeCompare(b.slug));
+
+  // On ne garde les sources précédentes que pour une relance courte ou référentielle.
+  // Une question avec un sujet explicite repart des résultats de recherche actuels.
+  const slugsRelance = relance ? [...new Set(slugsPrecedents)].slice(0, 2) : [];
+  const slugsClassees = classees.map((candidat) => candidat.slug).filter((slug) => !slugsRelance.includes(slug));
+  const slugs = [...slugsRelance, ...slugsClassees.slice(0, 4 - slugsRelance.length)];
   if (!slugs.length) return [];
 
   const fiches = await Promise.all(
@@ -223,12 +293,13 @@ async function chercherContexte(question: string, slugsPrecedents: string[]): Pr
   return fiches.filter((fiche): fiche is ContexteDonnee => fiche !== null);
 }
 
-function reponseSansResultat() {
+function reponseSansResultat(quota: z.infer<typeof QuotaDjazAI>) {
   return {
     answer_markdown:
       "Je n’ai pas trouvé de jeu de données assez proche dans le catalogue pour répondre avec une source fiable. " +
-      "Essaie avec un thème ou un terme précis, par exemple **wilayas**, **jours fériés** ou **universités**.",
+      "Essaie avec un thème ou un terme précis, par exemple **wilayas**, **prix du carburant** ou **universités**.",
     sources: [],
+    quota,
   };
 }
 
@@ -337,11 +408,31 @@ async function demanderOpenAi(
 
 routesAssistant.openapi(
   createRoute({
+    method: "get",
+    path: "/v1/assistant/quota",
+    tags: ["DjazAI"],
+    summary: "Lire le quota quotidien de DjazAI",
+    responses: {
+      200: { description: "Quota du compte", content: { "application/json": { schema: QuotaDjazAI } } },
+      ...reponsesErreur(401, 429, 503),
+    },
+  }),
+  async (c) => {
+    c.header("Cache-Control", "no-store");
+    const membre = await authentifierDjazAI(c.req.header("authorization"));
+    const quota = await obtenirQuotaDjazAI(membre.user_id, membre.is_admin, false);
+    return c.json(quota, 200);
+  }
+);
+
+routesAssistant.openapi(
+  createRoute({
     method: "post",
     path: "/v1/assistant/query",
     tags: ["DjazAI"],
     summary: "Interroger DjazAI sur le catalogue data-dz",
     description:
+      "Nécessite un compte data-dz. Cinq questions par jour pour les membres, sans quota quotidien pour les administrateurs. " +
       "Répond en Markdown à partir des métadonnées publiées et des aperçus disponibles. Chaque réponse peut fournir des sources structurées. " +
       "Cette première version ne parcourt pas les fichiers complets et ne calcule pas de totaux sur toutes leurs lignes.",
     request: {
@@ -351,18 +442,20 @@ routesAssistant.openapi(
       },
     },
     responses: {
-      200: { description: "Réponse Markdown et sources vérifiables", content: { "application/json": { schema: ReponseDjazAI } } },
-      ...reponsesErreur(400, 413, 429, 503),
+      200: { description: "Réponse Markdown, sources vérifiables et quota", content: { "application/json": { schema: ReponseDjazAI } } },
+      ...reponsesErreur(400, 401, 413, 429, 503),
       502: { description: "Erreur du fournisseur IA", content: { "application/problem+json": { schema: Probleme } } },
       504: { description: "Délai du fournisseur dépassé", content: { "application/problem+json": { schema: Probleme } } },
     },
   }),
   async (c) => {
     c.header("Cache-Control", "no-store");
+    const membre = await authentifierDjazAI(c.req.header("authorization"));
+    const quota = await obtenirQuotaDjazAI(membre.user_id, membre.is_admin, true);
     const { question, history = [], dataset_slugs = [] } = c.req.valid("json");
-    const contexte = await chercherContexte(question, dataset_slugs);
-    if (!contexte.length) return c.json(reponseSansResultat(), 200);
+    const contexte = await chercherContexte(question, dataset_slugs, history);
+    if (!contexte.length) return c.json(reponseSansResultat(quota), 200);
     const resultat = await demanderOpenAi(question, contexte, c.get("requestId"), history);
-    return c.json(resultat, 200);
+    return c.json({ ...resultat, quota }, 200);
   }
 );
