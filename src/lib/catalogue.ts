@@ -136,8 +136,6 @@ function versResume(ligne: LigneResume) {
     lien_paquet: restreinte ? lienPaquet(ligne) : null,
     nb_vues: Number(ligne.nb_vues ?? 0),
     nb_telechargements: Number(ligne.nb_telechargements ?? 0),
-    nb_vues: Number(ligne.nb_vues ?? 0),
-    nb_telechargements: Number(ligne.nb_telechargements ?? 0),
     source: sources ?? null,
     version: versions ? version : null,
     ressources: restreinte ? [] : ressourcesDe(ligne.slug, fichiers ?? []),
