@@ -32,14 +32,17 @@ npm run typecheck
 | `GET /v1/datasets/:slug/preview.png?lng=&v=` | Image d'aperçu 1200 × 630 (satori + resvg ; illustration WebP convertie par sharp ; polices Inter et logo dans `assets/`). Code dans `src/lib/image-apercu.ts`, **chargé à la demande** (`await import`) : jamais importé au démarrage, sinon un module natif absent fait tomber toute l'API (`test/resilience.test.ts`). En cas d'échec : 302 vers l'image générale du site | 1 h / 1 j | 120/min |
 | `GET /v1/datasets/:slug` | Fiche : métadonnées, version, colonnes, aperçu, `ressources` (fichiers et liens) | 15 s | 120/min |
 | `GET /v1/datasets/:slug/data?file=&offset=&limit=&fields=&wilaya=&geometry=none\|wkt` | Enregistrements en JSON paginé (≤ 1000, ≤ 4 Mo) | 30 min | 30/min |
-| `GET /v1/datasets/:slug/sample?file=&n=&random=` | Échantillon | 30 min | 30/min |\n| `POST /v1/datasets/:slug/view` | Compter une consultation de fiche (site data-dz) | aucun | 120/min |\n| `POST /v1/datasets/:slug/view` | Compter une consultation de fiche (depuis le site) | aucun | 120/min |
+| `GET /v1/datasets/:slug/sample?file=&n=&random=` | Échantillon | 30 min | 30/min |
+| `POST /v1/datasets/:slug/view` | Compter une consultation de fiche (depuis le site) | aucun | 120/min |
 | `GET /v1/datasets/:slug/download?format=csv\|xlsx\|json\|geojson&file=&inline=` | 302 vers un lien R2 signé (10 min) | 60 s | 30/min |
 | `GET /v1/categories`, `/v1/licences`, `/v1/sources`, `/v1/stats` | Référentiels | 1 h | 120/min |
 | `GET /v1/assistant/quota` | Quota quotidien DjazAI du compte connecté | aucun | 10/min/IP |
 | `POST /v1/assistant/query` | DjazAI : réponse Markdown et sources structurées à partir du catalogue publié et des aperçus (connexion requise) | aucun | 10/min/IP |
 | `/v1/admin/*` | Administration (voir plus bas) | aucun | 60/min |
 
-Les fiches et le catalogue exposent `nb_vues` et `nb_telechargements`. Les vues sont enregistrées une fois par onglet et par jeu de données côté site; les téléchargements comptent les redirections réussies (les accès inline ne comptent pas).\n\nLes fiches et le catalogue exposent `nb_vues` et `nb_telechargements`. Le site enregistre au plus une vue par onglet et par jeu de données; les téléchargements comptent les redirections réussies hors accès inline.\n\nLes réponses servies par le CDN ne comptent pas dans les limites. Les erreurs suivent la RFC 9457 (`application/problem+json`, avec `code` et `requestId`).
+Les fiches et le catalogue exposent `nb_vues` et `nb_telechargements`. Le site enregistre au plus une vue par onglet et par jeu de données; les téléchargements comptent les redirections réussies hors accès inline.
+
+Les réponses servies par le CDN ne comptent pas dans les limites. Les erreurs suivent la RFC 9457 (`application/problem+json`, avec `code` et `requestId`).
 
 ### DjazAI
 
