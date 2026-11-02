@@ -42,6 +42,8 @@ npm run typecheck
 
 Les fiches et le catalogue exposent `nb_vues` et `nb_telechargements`. Le site enregistre au plus une vue par onglet et par jeu de données; les téléchargements comptent les redirections réussies hors accès inline.
 
+**Migration requise** : appliquer `supabase/migrations/20261102000015_compteurs_datasets.sql` du dépôt `data-dz` avant le déploiement. La clé `SUPABASE_SECRET_KEY` est utilisée côté API pour appeler la fonction RPC réservée à `service_role`.
+
 Les réponses servies par le CDN ne comptent pas dans les limites. Les erreurs suivent la RFC 9457 (`application/problem+json`, avec `code` et `requestId`).
 
 ### DjazAI
