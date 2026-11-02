@@ -19,5 +19,9 @@ Node 22 obligatoire, y compris en local : sous Node 20, supabase-js plante à la
 - Noms métier en français (`listerDonnees`, `lienTelechargement`), routes et champs d'URL en anglais, comme le front.
 - Erreur de base : `erreurBase()` (admin) et `erreurSupabase()` (public) écrivent toujours le code Postgres dans les logs Vercel ; dans `erreurBase()`, 42703 (colonne inconnue = migration non appliquée) répond 503 `schema_outdated`. Une colonne ajoutée par une migration récente se lit avec `avecColonnesRecentes()` (liste `COLONNES_RECENTES`, ancien nom `avecIllustration()`) tant que la migration peut manquer.
 
+- **Droits d'administration** : `exigerAdmin` accepte `CLE_SYNCHRO` ou un membre admin / dont le rôle porte la permission de la route (`permissionRequise()` : `synchro.gerer` pour `/v1/admin/sync`, sinon `donnees.gerer`). Liste des permissions dans `src/lib/permissions.ts`, identique à la contrainte `roles.permissions` de la base et à `src/lib/roles.ts` du site : les trois changent ensemble.
+- **Fichiers par source** : `fichiers.source_id` / `licence_code` (migration 20261102000017), lus via le marqueur `SOURCE_FICHIERS` des `select` (retiré tant que la migration manque) ; chaque ressource sort avec `source` et `licence_code`.
+- **Synchronisation OpenStreetMap** : `scripts/osm/` (README, section dédiée) et `.github/workflows/osm-sync.yml`. Jamais Overpass en production. Les fichiers OSM s'ajoutent aux précédents, rien n'est supprimé.
+
 ## Tests (à étendre)
 Vitest couvre la conversion, la validation des paramètres, la limite de débit et quelques erreurs. À prévoir : routes publiques et admin avec un Supabase et un R2 simulés (liste, fiche, `/data`, `/download`, création, version, illustration), et un contrôle du schéma de la base cible (chaque colonne lue par l'API existe) avant chaque déploiement.
