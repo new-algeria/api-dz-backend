@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import type { PostgrestError } from "@supabase/supabase-js";
 import type { Acteur } from "../types.js";
-import { avecIllustration } from "./catalogue.js";
+import { avecIllustration, SOURCE_FICHIERS } from "./catalogue.js";
 import { decrireTable, lireTable, type FormatSource } from "./conversion.js";
 import { ErreurApi, introuvable } from "./erreurs.js";
 import { filtresRecherche } from "./recherche.js";
-import { ecrireObjet, infosObjet, lienEnvoiSigne, lireObjet, supprimerObjet, urlPublique } from "./r2.js";
+import { ecrireObjet, infosObjet, lienEnvoiSigne, lienSigne, lireObjet, supprimerObjet, urlPublique } from "./r2.js";
 import { supabaseAdmin } from "./supabase.js";
 import { slugDepuisTitre } from "./textes.js";
 
@@ -34,7 +34,7 @@ const COLONNES_ADMIN = `
   mots_cles, wilayas, frequence_maj, infos_source, cree_le, mis_a_jour_le, publie_le,
   score, nb_votes_pour, nb_votes_contre, nb_favoris, nb_commentaires,
   sources ( slug, nom, type ),
-  versions!datasets_version_courante_fk ( numero, nb_lignes, publie_le, fichiers ( nom, format, principal, taille_octets ) )
+  versions!datasets_version_courante_fk ( numero, nb_lignes, publie_le, fichiers ( nom, format, principal, taille_octets, sha256${SOURCE_FICHIERS} ) )
 `;
 
 export async function listerDonneesAdmin(recherche?: string, statut?: Statut) {
@@ -278,9 +278,11 @@ export async function preparerEnvoi(slug: string, nom: string, format: (typeof F
   return { cle, url: await lienEnvoiSigne(cle, typeContenu), methode: "PUT", content_type: typeContenu, expire_dans: 900 };
 }
 
-function versionSuivante(numero: string | undefined): string {
+/** Version suivante : mineure (`1.2.0` → `1.3.0`), ou corrective (`1.2.0` → `1.2.1`) pour les fichiers d'une autre source. */
+export function versionSuivante(numero: string | undefined, corrective = false): string {
   const morceaux = numero?.match(/^(\d+)\.(\d+)\.(\d+)$/);
   if (!morceaux) return "1.0.0";
+  if (corrective) return `${morceaux[1]}.${morceaux[2]}.${Number(morceaux[3]) + 1}`;
   return `${morceaux[1]}.${Number(morceaux[2]) + 1}.0`;
 }
 
@@ -299,15 +301,33 @@ export interface FichierVersion {
 /**
  * Publie une nouvelle version à partir de fichiers déjà envoyés sur R2 (`preparerEnvoi`).
  * Chaque fichier est relu et validé ; le principal fournit son nombre de lignes ou d'événements, ses colonnes et son aperçu.
+ *
+ * `source_slug` différent de la source de la donnée (ex. `openstreetmap` sur une donnée GeoAlgeria) : les fichiers
+ * envoyés sont ceux de cette source seulement. Ils ne sont jamais principaux, la version reprend le nombre de lignes,
+ * les colonnes et l'aperçu de la version courante, et la base recopie les fichiers des autres sources
+ * (trigger `conserver_fichiers_autres_sources`, migration 20261102000017 de data-dz).
  */
 export async function publierVersion(
   slug: string,
-  entree: { numero?: string; notes?: string | null; fichiers: FichierVersion[] },
+  entree: { numero?: string; notes?: string | null; source_slug?: string; licence_code?: string | null; fichiers: FichierVersion[] },
   acteur: Acteur
 ) {
   const donnee = await chargerDonneeAdmin(slug);
-  const fichiers = entree.fichiers.map((fichier, indice) => ({ ...fichier, principal: fichier.principal ?? indice === 0 }));
-  if (fichiers.filter((fichier) => fichier.principal).length !== 1) {
+  const sourceDonnee = (donnee.sources as { slug?: string } | null)?.slug;
+  const autreSource = Boolean(entree.source_slug && entree.source_slug !== sourceDonnee);
+  const sourceId = autreSource ? await idSource(entree.source_slug!) : null;
+
+  const { data: courante } = await supabaseAdmin()
+    .from("datasets")
+    .select("versions!datasets_version_courante_fk ( numero, nb_lignes, colonnes, apercu )")
+    .eq("id", donnee.id)
+    .maybeSingle();
+  const versionCourante = courante?.versions as { numero?: string; nb_lignes?: number; colonnes?: unknown[]; apercu?: unknown } | null | undefined;
+  // Fichiers d'une autre source dans une donnée qui a déjà sa version : ils s'ajoutent sans devenir principaux.
+  const complement = autreSource && Boolean(versionCourante);
+
+  const fichiers = entree.fichiers.map((fichier, indice) => ({ ...fichier, principal: complement ? false : (fichier.principal ?? indice === 0) }));
+  if (!complement && fichiers.filter((fichier) => fichier.principal).length !== 1) {
     throw new ErreurApi(400, "invalid_files", "Exactement un fichier doit être principal.");
   }
 
@@ -337,14 +357,11 @@ export async function publierVersion(
         : null,
     });
   }
-  const principal = analyses.find((analyse) => analyse.fichier.principal)!.description!;
+  const principal = complement
+    ? { nbLignes: versionCourante?.nb_lignes ?? 0, colonnes: versionCourante?.colonnes ?? [], apercu: versionCourante?.apercu ?? [] }
+    : analyses.find((analyse) => analyse.fichier.principal)!.description!;
 
-  const { data: courante } = await supabaseAdmin()
-    .from("datasets")
-    .select("versions!datasets_version_courante_fk ( numero )")
-    .eq("id", donnee.id)
-    .maybeSingle();
-  const numero = entree.numero ?? versionSuivante((courante?.versions as { numero?: string } | null)?.numero);
+  const numero = entree.numero ?? versionSuivante(versionCourante?.numero, complement);
 
   const { data: version, error } = await supabaseAdmin()
     .from("versions")
@@ -373,6 +390,8 @@ export async function publierVersion(
         principal: fichier.principal,
         taille_octets: taille,
         sha256,
+        // Colonnes de la migration 20261102000017 : écrites seulement pour une autre source (sinon null = celles de la donnée).
+        ...(autreSource ? { source_id: sourceId, licence_code: entree.licence_code ?? null } : {}),
       }))
     );
   if (erreurFichiers) {
@@ -387,6 +406,25 @@ export async function publierVersion(
   if (erreurCourante) throw erreurBase(erreurCourante);
 
   return { numero, nb_lignes: principal.nbLignes, colonnes: principal.colonnes, fichiers: analyses.length };
+}
+
+/**
+ * Lien signé (10 min) vers un fichier d'origine de la version courante, quel que soit le statut de la donnée :
+ * un script de synchronisation relit ainsi ses données précédentes avant de les compléter.
+ */
+export async function lienFichierAdmin(slug: string, nom: string, format?: string) {
+  const donnee = await chargerDonneeAdmin(slug);
+  const { data, error } = await supabaseAdmin()
+    .from("datasets")
+    .select("versions!datasets_version_courante_fk ( fichiers ( nom, format, cle_stockage ) )")
+    .eq("id", donnee.id)
+    .maybeSingle();
+  if (error) throw erreurBase(error);
+  const fichiers = ((data?.versions as { fichiers?: { nom: string | null; format: string; cle_stockage: string }[] } | null)?.fichiers ?? []).filter(
+    (fichier) => (fichier.nom ?? fichier.cle_stockage.split("/").pop()!.replace(/\.[^.]+$/, "")) === nom && (!format || fichier.format === format)
+  );
+  if (fichiers.length === 0) throw introuvable("Fichier");
+  return lienSigne(fichiers[0].cle_stockage, { expiration: 600 });
 }
 
 // ---------------------------------------------------------------- Illustration

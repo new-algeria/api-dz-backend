@@ -84,10 +84,11 @@ export async function lienTelechargement(slug: string, format: FormatSortie | Fo
   if ((source.taille_octets ?? 0) > TAILLE_MAX_CONVERSION) {
     throw new ErreurApi(413, "too_large_to_convert", `Fichier trop volumineux pour être converti : téléchargez-le en ${source.format.toUpperCase()}.`);
   }
+  // Un fichier d'une autre source (ex. OpenStreetMap dans une donnée GeoAlgeria) garde sa source et sa licence.
   const metadonnees = {
     titre: texteMultilingue(fiche.titre),
-    source: (fiche.sources as { nom?: string } | null)?.nom ?? null,
-    licence: [fiche.licence_code, fiche.licence_details].filter(Boolean).join(" — ") || null,
+    source: source.sources?.nom ?? (fiche.sources as { nom?: string } | null)?.nom ?? null,
+    licence: source.licence_code ?? ([fiche.licence_code, fiche.licence_details].filter(Boolean).join(" — ") || null),
     urlFiche: `${URL_SITE}/datasets/${slug}`,
   };
   // Une donnée et ses métadonnées (reprises dans la feuille « about » du XLSX) font partie de la clé :
