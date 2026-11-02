@@ -1,4 +1,5 @@
 import { ErreurApi } from "./erreurs.js";
+import { aLaPermission, droitsMembre } from "./permissions.js";
 import { supabaseAdmin, supabasePublic } from "./supabase.js";
 
 export interface QuotaDjazAI {
@@ -27,17 +28,15 @@ export async function authentifierDjazAI(authorization: string | undefined) {
     throw new ErreurApi(401, "authentication_required", "Votre session a expiré. Connectez-vous de nouveau.");
   }
 
-  const { data: profil, error: erreurProfil } = await supabaseAdmin()
-    .from("profils")
-    .select("role")
-    .eq("id", data.user.id)
-    .maybeSingle();
-  if (erreurProfil) {
-    console.error("DjazAI : lecture du rôle impossible", erreurProfil.code, erreurProfil.message);
+  // Sans quota : administrateurs et rôles portant la permission `djazai.illimite`.
+  let droits;
+  try {
+    droits = await droitsMembre(data.user.id);
+  } catch {
     throw new ErreurApi(503, "assistant_quota_unavailable", "Le contrôle d’accès à DjazAI est temporairement indisponible.");
   }
 
-  return { user_id: data.user.id, is_admin: profil?.role === "admin" };
+  return { user_id: data.user.id, is_admin: aLaPermission(droits, "djazai.illimite") };
 }
 
 /** Compte la question de façon atomique dans Supabase ; en cas de défaut du compteur, aucune requête IA ne part. */
