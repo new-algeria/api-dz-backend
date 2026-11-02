@@ -34,7 +34,7 @@ const COLONNES_RESUME = `
 const COLONNES_FICHE = `
   id, slug, titre, description, readme, categorie_slug, licence_code, licence_details,
   url_source, mots_cles, wilayas, frequence_maj, infos_source, mis_a_jour_le,
-  score, nb_votes_pour, nb_votes_contre, nb_favoris, nb_commentaires,
+  score, nb_votes_pour, nb_votes_contre, nb_favoris, nb_commentaires, nb_vues, nb_telechargements,
   categories ( slug, nom, icone ),
   sources ( slug, nom, url, verifiee ),
   licences ( code, nom, url, usage_commercial, attribution_requise, partage_identique ),
