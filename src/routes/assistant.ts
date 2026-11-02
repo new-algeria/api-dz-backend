@@ -322,7 +322,7 @@ async function listerCatalogueComplet(): Promise<{ lignes: string[]; total: numb
   const taillePage = 100;
   const plafond = 1000;
   const premiere = await listerDonnees({ sort: "name", page: 1, limit: taillePage });
-  const donnees = [...premiere.data];
+  const donnees: unknown[] = [...premiere.data];
   const pagesMax = Math.min(premiere.pagination.pages, Math.ceil(plafond / taillePage));
   for (let debut = 2; debut <= pagesMax; debut += 5) {
     const pages = Array.from({ length: Math.min(5, pagesMax - debut + 1) }, (_, index) => debut + index);
@@ -330,9 +330,10 @@ async function listerCatalogueComplet(): Promise<{ lignes: string[]; total: numb
     for (const resultat of resultats) donnees.push(...resultat.data);
   }
 
-  const lignes = donnees.map((donnee) => {
-    const slug = typeof donnee.slug === "string" ? donnee.slug : "";
-    const titre = texteMultilingue(donnee.titre) ?? slug;
+  const lignes = donnees.map((valeur) => {
+    const donnee = objet(valeur);
+    const slug = typeof donnee?.slug === "string" ? donnee.slug : "";
+    const titre = texteMultilingue(donnee?.titre) ?? slug;
     const etiquette = echapperLienMarkdown(titre.replace(/[\r\n]+/g, " ").trim());
     return "- [" + etiquette + "](" + URL_SITE + "/datasets/" + encodeURIComponent(slug) + ")";
   });
