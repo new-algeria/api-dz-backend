@@ -40,7 +40,7 @@ app.use(async (c, next) => {
 // CORS : lecture publique depuis n'importe quel site ; administration réservée aux origines de data-dz.
 const corsPublic = cors({
   origin: "*",
-  allowMethods: ["GET", "HEAD", "OPTIONS"],
+  allowMethods: ["GET", "HEAD", "POST", "OPTIONS"],
   exposeHeaders: ["RateLimit", "RateLimit-Policy", "Retry-After", "X-Request-Id", "ETag"],
   maxAge: 86400,
 });

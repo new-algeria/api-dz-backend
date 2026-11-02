@@ -32,6 +32,8 @@ const Compteurs = {
   nb_votes_contre: z.number(),
   nb_favoris: z.number(),
   nb_commentaires: z.number(),
+  nb_vues: z.number().int().nonnegative(),
+  nb_telechargements: z.number().int().nonnegative(),
 };
 
 const Ressource = z
