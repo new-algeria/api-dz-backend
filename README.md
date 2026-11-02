@@ -43,7 +43,7 @@ Les réponses servies par le CDN ne comptent pas dans les limites. Les erreurs s
 
 ### DjazAI
 
-Les routes DjazAI nécessitent `Authorization: Bearer <jeton de session Supabase>`. `GET /v1/assistant/quota` renvoie le quota actuel. `POST /v1/assistant/query` accepte une question et jusqu'à 8 messages récents; la réponse contient `answer_markdown`, `sources[]` et `quota`.
+Les routes DjazAI nécessitent `Authorization: Bearer <jeton de session Supabase>`. `GET /v1/assistant/quota` renvoie le quota actuel. `POST /v1/assistant/query` accepte une question et jusqu'à 8 messages récents; la réponse contient `answer_markdown`, `sources[]` et `quota`. Les sources citées ajoutent `image_url` (aperçu visuel du dataset, sauf diffusion restreinte) et `formats` pour les afficher directement dans le chat.
 
 Les comptes membres ont droit à **5 questions par jour civil, selon l'heure d'Alger**. Le rôle `admin` est lu depuis `profils.role` côté serveur et n'a pas de quota journalier. Une limite de débit de 10 requêtes par minute et par IP demeure comme protection contre les rafales. Le compteur journalier est atomique dans Supabase; si la migration manque ou si le compteur est indisponible, l'API refuse la requête sans appeler le fournisseur.
 
@@ -51,7 +51,7 @@ Les comptes membres ont droit à **5 questions par jour civil, selon l'heure d'A
 
 Configurer `OPENAI_API_KEY` dans les variables d'environnement du projet Vercel de l'API. Ne jamais exposer cette clé dans le site. `DJAZAI_MODEL` est facultatif (défaut : `gpt-6-luna`). Le fournisseur est appelé via l'API Responses, sans stockage des réponses (`store: false`).
 
-La recherche prend en compte les termes de la question, les titres, mots-clés et descriptions des jeux publiés. Les jeux de données déjà cités ne sont gardés que pour une relance courte ou référentielle; une question sur un nouveau thème lance une recherche neuve. L'assistant reçoit les métadonnées et aperçus disponibles, mais ne lit pas les fichiers complets et ne calcule pas de totaux sur toutes les lignes. Il doit le dire quand l'aperçu ne suffit pas.
+Les demandes explicites de liste complète (par exemple « donne la liste de tous les datasets ») utilisent un parcours paginé déterministe du catalogue publié; elles n'envoient pas un échantillon de fiches au modèle en le présentant comme l'ensemble du catalogue. La recherche prend en compte les termes de la question, les titres, mots-clés et descriptions des jeux publiés. Les jeux de données déjà cités ne sont gardés que pour une relance courte ou référentielle; une question sur un nouveau thème lance une recherche neuve. L'assistant reçoit les métadonnées et aperçus disponibles, mais ne lit pas les fichiers complets et ne calcule pas de totaux sur toutes les lignes. Il doit le dire quand l'aperçu ne suffit pas.
   
 ### Données non redistribuables
 Colonne `datasets.diffusion_restreinte` (migration `20261031000011_diffusion_restreinte.sql` du dépôt data-dz, **à appliquer avant de déployer**), écrite à la main dans le SQL Editor (aujourd'hui : `poste`, `protection-civile`). La fiche reste publique (métadonnées, colonnes, nombre de lignes), mais `ressources` est vide, `version.apercu` vaut `null`, et `/data`, `/sample`, `/download` répondent **403 `not_redistributable`** sans jamais lire R2. Le catalogue et la fiche portent `diffusion_restreinte` et `lien_paquet` (paquet npm de la source, tiré de `infos_source.paquet`, sinon de `url_source` si c'est une page npm) : le site l'affiche à la place du téléchargement.
