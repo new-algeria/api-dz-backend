@@ -1,6 +1,6 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
-import { mettreEnCache } from "../lib/cache-http.js";
-import { URL_SITE } from "../lib/catalogue.js";
+import { mettreEnCache, sansCache } from "../lib/cache-http.js";
+import { URL_SITE, compterEvenementDonnee } from "../lib/catalogue.js";
 import {
   chargerFicheInterne,
   chargerStatistiques,
@@ -84,6 +84,29 @@ routesPubliques.openapi(
     if (!resultat) throw introuvable("Donnée");
     mettreEnCache(c, "vivant");
     return c.json(versFiche(resultat.fiche, resultat.fichiers) as z.infer<typeof FicheDonnee>, 200);
+  }
+);
+
+// ---------------------------------------------------------------- Compteur de vues
+
+routesPubliques.openapi(
+  createRoute({
+    method: "post",
+    path: "/v1/datasets/{slug}/view",
+    tags: ["Données"],
+    summary: "Compter une vue de la fiche",
+    description: "Enregistre une consultation de fiche déclenchée par le site. Non mis en cache et protégé par la limite de débit publique.",
+    request: { params: ParamsSlug },
+    responses: {
+      200: { description: "Nombre de vues actualisé", content: { "application/json": { schema: z.object({ nb_vues: z.number().int().nonnegative() }) } } },
+      ...reponsesErreur(404, 429, 503),
+    },
+  }),
+  async (c) => {
+    const { slug } = c.req.valid("param");
+    const nb_vues = await compterEvenementDonnee(slug, "vue");
+    sansCache(c);
+    return c.json({ nb_vues }, 200);
   }
 );
 
@@ -209,7 +232,15 @@ routesPubliques.openapi(
     const { slug } = c.req.valid("param");
     const { format, file, inline } = c.req.valid("query");
     const lien = await lienTelechargement(slug, format, file, inline);
-    mettreEnCache(c, "redirection");
+    if (!inline) {
+      try {
+        await compterEvenementDonnee(slug, "telechargement");
+      } catch (erreur) {
+        // Les statistiques ne doivent pas empêcher un téléchargement valide.
+        console.error("Impossible d'incrémenter le compteur de téléchargements", c.get("requestId"), erreur);
+      }
+    }
+    sansCache(c);
     return c.redirect(lien, 302);
   }
 );
