@@ -26,7 +26,7 @@ export type FichierInterne = LigneFichier;
 // (liens de l'API), jamais avec leur clé de stockage.
 const COLONNES_RESUME = `
   id, slug, titre, description, categorie_slug, licence_code, mots_cles, mis_a_jour_le, publie_le, cree_le, infos_source,
-  score, nb_votes_pour, nb_votes_contre, nb_favoris, nb_commentaires, nb_vues, nb_telechargements, nb_vues, nb_telechargements,
+  score, nb_votes_pour, nb_votes_contre, nb_favoris, nb_commentaires, nb_vues, nb_telechargements,
   sources ( slug, nom, url, verifiee ),
   versions!datasets_version_courante_fk ( numero, nb_lignes, publie_le, colonnes, fichiers ( nom, format, cle_stockage, principal, taille_octets ) )
 `;
@@ -81,18 +81,6 @@ export function lienPaquet(ligne: Record<string, unknown>): string | null {
   if (typeof paquet === "string" && /^(@[\w.-]+\/)?[\w.-]+$/.test(paquet)) return `https://www.npmjs.com/package/${paquet}`;
   const url = typeof ligne.url_source === "string" ? ligne.url_source : null;
   return url?.startsWith("https://www.npmjs.com/") ? url : null;
-}
-
-export async function compterEvenementDonnee(slug: string, evenement: "vue" | "telechargement"): Promise<number> {
-  const { data, error } = await supabaseAdmin().rpc("compter_evenement_donnee", {
-    p_slug: slug,
-    p_evenement: evenement,
-  });
-  if (error) throw erreurSupabase(error);
-  if (data === null || data === undefined) throw new Error("Donnée publiée introuvable");
-  const compteur = Number(data);
-  if (!Number.isSafeInteger(compteur) || compteur < 0) throw new Error("Compteur de donnée invalide");
-  return compteur;
 }
 
 export async function compterEvenementDonnee(slug: string, evenement: "vue" | "telechargement"): Promise<number> {
