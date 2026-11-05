@@ -8,6 +8,7 @@ import {
   enregistrerDonnee,
   enregistrerIllustration,
   FORMATS_ENVOI,
+  lienFichierAdmin,
   listerDonneesAdmin,
   listerSourcesAdmin,
   modifierDonnee,
@@ -22,6 +23,7 @@ import {
 import { sansCache } from "../lib/cache-http.js";
 import { publierProposition } from "../lib/propositions.js";
 import { ErreurApi } from "../lib/erreurs.js";
+import { chargerSynchro, DECLENCHEURS, enregistrerExecution, listerSynchros, modifierSynchro, STATUTS_EXECUTION } from "../lib/synchro.js";
 import { exigerAdmin } from "../middleware/admin.js";
 import { limiteDebit } from "../middleware/limite-debit.js";
 import { NomFichier, ParamsSlug, reponsesErreur, Slug } from "../schemas.js";
@@ -33,7 +35,8 @@ export const routesAdmin = new OpenAPIHono<EnvApp>({ defaultHook: crochetValidat
 routesAdmin.openAPIRegistry.registerComponent("securitySchemes", "jeton", {
   type: "http",
   scheme: "bearer",
-  description: "Session Supabase d'un administrateur, ou clé du script de synchronisation.",
+  description:
+    "Session Supabase d'un administrateur (ou d'un membre dont le rôle porte la permission : `synchro.gerer` pour `/v1/admin/sync`, sinon `donnees.gerer`), ou clé des scripts de synchronisation.",
 });
 
 routesAdmin.use("/v1/admin/*", limiteDebit("admin"), exigerAdmin, async (c, next) => {
@@ -281,7 +284,10 @@ routesAdmin.openapi(
     path: "/v1/admin/datasets/{slug}/versions",
     tags: ["Administration"],
     summary: "Publier une nouvelle version à partir des fichiers envoyés",
-    description: "Chaque fichier est relu et validé. Le fichier principal donne le nombre de lignes ou d'événements, les colonnes et l'aperçu.",
+    description:
+      "Chaque fichier est relu et validé. Le fichier principal donne le nombre de lignes ou d'événements, les colonnes et l'aperçu. " +
+      "`source_slug` différent de la source de la donnée (ex. `openstreetmap` sur une donnée GeoAlgeria) : les fichiers envoyés remplacent " +
+      "seulement ceux de cette source, les autres sont gardés ; ils ne sont pas principaux et portent `licence_code`.",
     security: securite,
     request: {
       params: ParamsSlug,
@@ -291,6 +297,8 @@ routesAdmin.openapi(
             schema: z.object({
               numero: z.string().regex(/^\d+\.\d+\.\d+$/).optional(),
               notes: z.string().max(2000).nullable().optional(),
+              source_slug: z.string().regex(/^[a-z0-9-]{1,60}$/).optional().openapi({ example: "openstreetmap" }),
+              licence_code: z.string().max(60).nullable().optional().openapi({ example: "ODbL-1.0" }),
               fichiers: z
                 .array(z.object({ cle: z.string().max(300), nom: NomFichier, format: z.enum(FORMATS_ENVOI), principal: z.boolean().optional() }))
                 .min(1)
@@ -307,6 +315,26 @@ routesAdmin.openapi(
     },
   }),
   async (c) => c.json(await publierVersion(c.req.valid("param").slug, c.req.valid("json"), c.get("acteur")), 201)
+);
+
+routesAdmin.openapi(
+  createRoute({
+    method: "get",
+    path: "/v1/admin/datasets/{slug}/files/{file}",
+    tags: ["Administration"],
+    summary: "Fichier d'origine de la version courante (tous statuts)",
+    description: "302 vers un lien signé (10 min). Sert aux scripts de synchronisation à relire leurs données avant de les compléter.",
+    security: securite,
+    request: {
+      params: ParamsSlug.extend({ file: NomFichier.openapi({ param: { name: "file", in: "path" } }) }),
+      query: z.object({ format: z.enum(FORMATS_ENVOI).optional() }),
+    },
+    responses: { 302: { description: "Redirection vers le fichier" }, ...reponsesErreur(401, 403, 404) },
+  }),
+  async (c) => {
+    const { slug, file } = c.req.valid("param");
+    return c.redirect(await lienFichierAdmin(slug, file, c.req.valid("query").format), 302);
+  }
 );
 
 // ---------------------------------------------------------------- Illustration
@@ -390,6 +418,95 @@ routesAdmin.openapi(
     responses: { ...cree(SourceAdmin, "Source créée"), ...reponsesErreur(400, 401, 403, 409) },
   }),
   async (c) => c.json(await creerSource(c.req.valid("json")), 201)
+);
+
+// ---------------------------------------------------------------- Synchronisations
+
+const Synchro = z.record(z.string(), z.unknown()).openapi("Synchronisation");
+const ParamsCode = z.object({ code: z.string().regex(/^[a-z0-9-]{2,40}$/).openapi({ param: { name: "code", in: "path" }, example: "openstreetmap" }) });
+
+routesAdmin.openapi(
+  createRoute({
+    method: "get",
+    path: "/v1/admin/sync",
+    tags: ["Synchronisations"],
+    summary: "Synchronisations (OpenStreetMap, GeoAlgeria…) : réglages, échéance, dernières exécutions",
+    security: securite,
+    responses: { ...ok(z.object({ data: z.array(Synchro) }), "Synchronisations"), ...reponsesErreur(401, 403, 503) },
+  }),
+  async (c) => c.json({ data: await listerSynchros() }, 200)
+);
+
+routesAdmin.openapi(
+  createRoute({
+    method: "get",
+    path: "/v1/admin/sync/{code}",
+    tags: ["Synchronisations"],
+    summary: "Une synchronisation",
+    description: "`a_faire` : la GitHub Action doit-elle travailler aujourd'hui (active, et échéance atteinte ou « forcer »).",
+    security: securite,
+    request: { params: ParamsCode },
+    responses: { ...ok(Synchro, "Synchronisation"), ...reponsesErreur(401, 403, 404, 503) },
+  }),
+  async (c) => c.json(await chargerSynchro(c.req.valid("param").code), 200)
+);
+
+routesAdmin.openapi(
+  createRoute({
+    method: "patch",
+    path: "/v1/admin/sync/{code}",
+    tags: ["Synchronisations"],
+    summary: "Régler une synchronisation (active, intervalle en jours, forcer au prochain passage)",
+    security: securite,
+    request: {
+      params: ParamsCode,
+      body: {
+        content: {
+          "application/json": {
+            schema: z.object({
+              actif: z.boolean().optional(),
+              intervalle_jours: z.number().int().min(1).max(365).optional(),
+              forcer: z.boolean().optional(),
+            }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: { ...ok(Synchro, "Synchronisation modifiée"), ...reponsesErreur(400, 401, 403, 404, 503) },
+  }),
+  async (c) => c.json(await modifierSynchro(c.req.valid("param").code, c.req.valid("json")), 200)
+);
+
+routesAdmin.openapi(
+  createRoute({
+    method: "post",
+    path: "/v1/admin/sync/{code}/runs",
+    tags: ["Synchronisations"],
+    summary: "Rapport d'une exécution (scripts de synchronisation)",
+    description: "Réussie ou partielle : devient la dernière exécution et remet « forcer » à faux. Échec ou essai : l'échéance ne bouge pas.",
+    security: securite,
+    request: {
+      params: ParamsCode,
+      body: {
+        content: {
+          "application/json": {
+            schema: z.object({
+              statut: z.enum(STATUTS_EXECUTION),
+              declencheur: z.enum(DECLENCHEURS).optional(),
+              debut: z.iso.datetime({ offset: true }).optional(),
+              fin: z.iso.datetime({ offset: true }).optional(),
+              resume: z.string().max(2000).nullable().optional(),
+              rapport: z.record(z.string(), z.unknown()).optional(),
+            }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: { ...cree(z.object({ id: z.string() }), "Exécution enregistrée"), ...reponsesErreur(400, 401, 403, 404, 503) },
+  }),
+  async (c) => c.json(await enregistrerExecution(c.req.valid("param").code, c.req.valid("json")), 201)
 );
 
 // ---------------------------------------------------------------- Propositions

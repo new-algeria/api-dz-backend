@@ -50,7 +50,7 @@ Les réponses servies par le CDN ne comptent pas dans les limites. Les erreurs s
 
 Les routes DjazAI nécessitent `Authorization: Bearer <jeton de session Supabase>`. `GET /v1/assistant/quota` renvoie le quota actuel. `POST /v1/assistant/query` accepte une question et jusqu'à 8 messages récents; la réponse contient `answer_markdown`, `sources[]` et `quota`. Les sources citées ajoutent `image_url` (aperçu visuel du dataset, sauf diffusion restreinte) et `formats` pour les afficher directement dans le chat.
 
-Les comptes membres ont droit à **5 questions par jour civil, selon l'heure d'Alger**. Le rôle `admin` est lu depuis `profils.role` côté serveur et n'a pas de quota journalier. Une limite de débit de 10 requêtes par minute et par IP demeure comme protection contre les rafales. Le compteur journalier est atomique dans Supabase; si la migration manque ou si le compteur est indisponible, l'API refuse la requête sans appeler le fournisseur.
+Les comptes membres ont droit à **5 questions par jour civil, selon l'heure d'Alger**. Les administrateurs et les rôles portant la permission `djazai.illimite` (lus côté serveur, `droitsMembre()`) n'ont pas de quota journalier. Une limite de débit de 10 requêtes par minute et par IP demeure comme protection contre les rafales. Le compteur journalier est atomique dans Supabase; si la migration manque ou si le compteur est indisponible, l'API refuse la requête sans appeler le fournisseur.
 
 **Migration requise avant le déploiement** : appliquer `supabase/migrations/20261101000012_djazai_quota.sql` du dépôt `data-dz`. Elle crée le compteur et une fonction RPC accessible uniquement à `service_role`. L'API doit avoir `SUPABASE_SECRET_KEY` configurée pour vérifier les rôles et appeler cette fonction.
 
@@ -73,7 +73,9 @@ Un fichier existe sur R2 dans un ou plusieurs formats d'origine (JSON, GeoJSON, 
 
 ## Administration et synchronisation
 
-`Authorization: Bearer <jeton>` : session Supabase d'un membre `admin`, ou `CLE_SYNCHRO` pour le script GeoAlgeria.
+`Authorization: Bearer <jeton>` : session Supabase d'un membre `admin` (ou dont le rôle porte la permission de la route : `synchro.gerer` pour `/v1/admin/sync`, sinon `donnees.gerer` ; rôles personnalisés de la migration `20261102000016` du dépôt data-dz, lus par `droitsMembre()`), ou `CLE_SYNCHRO` pour les scripts de synchronisation (GeoAlgeria, OpenStreetMap).
+
+**Migrations requises avant de déployer cette version** (dépôt data-dz, dans l'ordre) : `20261102000016_roles_personnalises.sql`, `20261102000017_sources_fichiers_synchronisations.sql`. Sans elles, l'API se replie (admins seulement, fichiers sans source, `/v1/admin/sync` en 503 `schema_outdated`) au lieu de casser.
 
 | Route | Rôle |
 |---|---|
@@ -85,11 +87,28 @@ Un fichier existe sur R2 dans un ou plusieurs formats d'origine (JSON, GeoJSON, 
 | `POST /v1/admin/datasets/:slug/rename` | Changer l'identifiant `{"slug", "illustration_actuelle"?}` : l'ancien est gardé dans `anciens_slugs` (migration `20261029000010`), la fiche et ses sous-routes y redirigent en 307, les liens des notifications sont réécrits ; 409 `slug_taken` ou `synchronized_source` (la synchro retrouve ses données par leur identifiant) |
 | `DELETE /v1/admin/datasets/:slug?files=true` | Suppression définitive (409 si la base refuse : archiver alors) |
 | `POST /v1/admin/datasets/:slug/uploads` | URL `PUT` signée (15 min) pour envoyer un fichier directement à R2 |
-| `POST /v1/admin/datasets/:slug/versions` | Publie une version à partir des fichiers envoyés (lignes, colonnes, aperçu calculés) |
+| `POST /v1/admin/datasets/:slug/versions` | Publie une version à partir des fichiers envoyés (lignes, colonnes, aperçu calculés). `source_slug` différent de la source de la donnée (ex. `openstreetmap` sur une donnée GeoAlgeria) + `licence_code` : les fichiers envoyés remplacent seulement ceux de cette source, ne sont jamais principaux, la version reprend lignes, colonnes et aperçu de la version courante ; la base recopie les fichiers des autres sources (trigger `conserver_fichiers_autres_sources`) |
+| `GET /v1/admin/datasets/:slug/files/:file?format=` | 302 vers le fichier d'origine de la version courante (tous statuts) : un script relit ses données avant de les compléter |
 | `POST` / `DELETE /v1/admin/datasets/:slug/illustration` | Illustration (multipart `image`, PNG / JPEG / WebP, 2 Mo) dans `web-assets/datasets/` |
 | `GET /v1/admin/sources` | Toutes les sources, sans cache (le public `/v1/sources` est en cache 1 h) |
 | `POST /v1/admin/sources` | Créer une source `{"nom", "url"?, "description"?}` : slug tiré du nom, type repris de la source `communaute` ; 409 `source_exists` (`details.slug`) si le nom existe déjà (casse et accents ignorés) |
 | `POST /v1/admin/submissions/:id/publish` | Met en ligne une proposition `acceptee` (session admin uniquement, pas `CLE_SYNCHRO`), voir ci-dessous |
+| `GET /v1/admin/sync`, `GET /v1/admin/sync/:code` | Synchronisations (tables `synchronisations`, `synchro_executions`) : réglages, `prochaine_execution`, `a_faire`, 10 dernières exécutions, dernières versions des données de la source |
+| `PATCH /v1/admin/sync/:code` | `{"actif"?, "intervalle_jours"? (1-365), "forcer"?}` (page `/admin/sync` du site) |
+| `POST /v1/admin/sync/:code/runs` | Rapport d'une exécution `{"statut": "reussie"\|"partielle"\|"echec"\|"essai", "declencheur"?, "debut"?, "fin"?, "resume"?, "rapport"?}` : réussie ou partielle → dernière exécution (point de départ de l'échéance), « forcer » retombe |
+
+### Synchronisation OpenStreetMap (`scripts/osm/`)
+
+GitHub Action `.github/workflows/osm-sync.yml`, chaque jour à 5 h 17 UTC, mais elle ne travaille qu'à l'échéance réglée sur `/admin/sync` (`GET /v1/admin/sync/openstreetmap` → `a_faire`). Tant que la route ou la migration manquent : un passage tous les `OSM_SYNC_INTERVAL_DAYS` jours.
+
+1. Un seul téléchargement de l'extrait Geofabrik de l'Algérie (~300 Mo, mis à jour chaque nuit) : **aucun appel à Overpass**, aucune limite d'API publique.
+2. `osmium tags-filter` puis `osmium export` (une passe, ~2 s) ; chaque objet est rangé dans les flux de `scripts/osm/categories.ts` (étiquettes, conditions, donnée et fichier cibles, rayon de rapprochement). **Ajouter une catégorie = ajouter un flux** (et, pour une nouvelle donnée, son entrée dans `NOUVELLES_DONNEES`).
+3. Fusion avec le fichier déjà publié (`scripts/osm/fusion.ts`, testé dans `test/osm-fusion.test.ts`) : on ajoute, on met à jour, **on ne supprime jamais** (`osm_ajoute_le`, `osm_absent_depuis`). Format overpass-turbo (`@id`, étiquettes, point au centre). Dans une donnée d'une autre source (GeoAlgeria), le fichier OSM est un complément (`hospitals-osm`…) et chaque objet porte `geoalgeria_id` quand il correspond à un objet GeoAlgeria (même identifiant OSM, ou proche avec un nom proche).
+4. Contrôles : objets hors d'Algérie écartés, baisse de plus de 10 % des objets d'un fichier → donnée non publiée (anomalie dans le rapport).
+5. Publication seulement si le fichier a changé (empreinte stable : aucune date de passage sur un objet inchangé), via `/uploads` puis `/versions` (`source_slug: openstreetmap`, numéro `x.y.AAAAMMJJ` pour un complément). Nouvelles données créées publiées par `PUT`.
+6. Rapport : console, résumé de l'Action, `POST /v1/admin/sync/openstreetmap/runs` (lu par `/admin/sync`).
+
+Lancement manuel : GitHub → Actions → « Synchro OpenStreetMap » → Run workflow (essai coché par défaut : rien n'est publié). En local : `npx tsx scripts/osm/synchro.ts --essai` (osmium requis : `brew install osmium-tool` ; sans `CLE_SYNCHRO`, lecture publique et essai seulement ; `--extrait=<pbf>`, `--seulement=sante,gas-stations`, `--forcer`). Secrets du dépôt : `API_URL`, `CLE_SYNCHRO` (même valeur que dans Vercel).
 
 ### Mise en ligne d'une proposition
 

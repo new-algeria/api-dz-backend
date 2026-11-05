@@ -40,6 +40,11 @@ const Ressource = z
   .object({
     nom: z.string(),
     principal: z.boolean(),
+    source: z
+      .object({ slug: z.string(), nom: z.string() })
+      .nullable()
+      .openapi({ description: "Source du fichier (celle de la donnée, ou une autre : ex. OpenStreetMap dans une donnée GeoAlgeria)" }),
+    licence_code: z.string().nullable().openapi({ description: "Licence du fichier (celle de la donnée sauf mention contraire)" }),
     fichiers: z.array(z.object({ format: z.string(), taille_octets: z.number().nullable(), url: z.url() })),
     telechargements: z.array(z.object({ format: z.enum(FORMATS_SORTIE), natif: z.boolean(), url: z.url() })),
   })

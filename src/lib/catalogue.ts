@@ -14,11 +14,21 @@ interface LigneFichier {
   cle_stockage: string;
   principal: boolean;
   taille_octets: number | null;
-  sha256: string | null;
+  sha256?: string | null;
+  /** Licence du fichier quand elle diffère de celle de la donnée (migration 20261102000017). */
+  licence_code?: string | null;
+  /** Source du fichier quand elle diffère de celle de la donnée (`fichiers.source_id`, migration 20261102000017). */
+  sources?: { slug: string; nom: string } | null;
 }
 
 /** Fichier tel que la base le décrit ; `cle_stockage` ne quitte jamais l'API. */
 export type FichierInterne = LigneFichier;
+
+/**
+ * Remplacé dans les `select` par la source et la licence de chaque fichier (migration 20261102000017),
+ * ou par rien tant qu'elle n'est pas appliquée (voir `avecColonnesRecentes`).
+ */
+export const SOURCE_FICHIERS = "%source_fichiers%";
 
 // `publie_le` (première publication, sinon `cree_le`) : le site met en avant les données ajoutées depuis peu.
 // Colonnes, fichiers et `infos_source` : les cartes du catalogue en tirent leur chiffre (unité, séries temporelles),
@@ -28,7 +38,7 @@ const COLONNES_RESUME = `
   id, slug, titre, description, categorie_slug, licence_code, mots_cles, mis_a_jour_le, publie_le, cree_le, infos_source,
   score, nb_votes_pour, nb_votes_contre, nb_favoris, nb_commentaires, nb_vues, nb_telechargements,
   sources ( slug, nom, url, verifiee ),
-  versions!datasets_version_courante_fk ( numero, nb_lignes, publie_le, colonnes, fichiers ( nom, format, cle_stockage, principal, taille_octets ) )
+  versions!datasets_version_courante_fk ( numero, nb_lignes, publie_le, colonnes, fichiers ( nom, format, cle_stockage, principal, taille_octets${SOURCE_FICHIERS} ) )
 `;
 
 const COLONNES_FICHE = `
@@ -40,7 +50,7 @@ const COLONNES_FICHE = `
   licences ( code, nom, url, usage_commercial, attribution_requise, partage_identique ),
   versions!datasets_version_courante_fk (
     numero, notes, nb_lignes, colonnes, apercu, publie_le,
-    fichiers ( nom, format, cle_stockage, principal, taille_octets, sha256 )
+    fichiers ( nom, format, cle_stockage, principal, taille_octets, sha256${SOURCE_FICHIERS} )
   )
 `;
 
@@ -48,9 +58,15 @@ const COLONNES_FICHE = `
  * Colonnes ajoutées par des migrations récentes : `illustration_url` (20261025000009), `diffusion_restreinte`
  * et `licence_manuelle` (20261031000011). Tant qu'une migration n'est pas appliquée, on relance la requête
  * sans la colonne inconnue (code Postgres 42703) au lieu de casser l'API ; elle vaut alors sa valeur par défaut.
+ * Même principe pour la source et la licence des fichiers (`SOURCE_FICHIERS`, relation absente : PGRST200).
  */
 const COLONNES_RECENTES = ["illustration_url", "diffusion_restreinte", "licence_manuelle", "nb_vues", "nb_telechargements"] as const;
 const colonnesAbsentes = new Set<string>();
+let sourceFichiersAbsente = false;
+
+const sourceFichiersManquante = (erreur: PostgrestError) =>
+  (erreur.code === "PGRST200" && /fichiers/.test(erreur.message) && /sources/.test(erreur.message)) ||
+  (erreur.code === "42703" && /licence_code|source_id/.test(erreur.message) && /fichiers/.test(erreur.message));
 
 export async function avecColonnesRecentes<T>(
   colonnes: string,
@@ -58,8 +74,13 @@ export async function avecColonnesRecentes<T>(
 ): Promise<T> {
   for (;;) {
     const recentes = COLONNES_RECENTES.filter((colonne) => !colonnesAbsentes.has(colonne));
-    const resultat = await executer([...recentes, colonnes].join(", "));
+    const avecSources = colonnes.replaceAll(SOURCE_FICHIERS, sourceFichiersAbsente ? "" : ", licence_code, sources ( slug, nom )");
+    const resultat = await executer([...recentes, avecSources].join(", "));
     if (!resultat.error) return resultat.data;
+    if (!sourceFichiersAbsente && colonnes.includes(SOURCE_FICHIERS) && sourceFichiersManquante(resultat.error)) {
+      sourceFichiersAbsente = true;
+      continue;
+    }
     const manquante = resultat.error.code === "42703" ? recentes.find((colonne) => resultat.error!.message.includes(colonne)) : undefined;
     if (!manquante) throw erreurSupabase(resultat.error);
     colonnesAbsentes.add(manquante);
@@ -125,6 +146,11 @@ type LigneResume = Record<string, unknown> & {
   licence_manuelle?: boolean;
 };
 
+const origineDe = (ligne: Record<string, unknown>): OrigineDonnee => ({
+  source: (ligne.sources as OrigineDonnee["source"]) ?? null,
+  licence_code: (ligne.licence_code as string | null | undefined) ?? null,
+});
+
 function versResume(ligne: LigneResume) {
   const { sources, versions, illustration_url, diffusion_restreinte: _restreinte, licence_manuelle: _manuelle, ...reste } = ligne;
   const { fichiers, ...version } = (versions ?? {}) as Record<string, unknown> & { fichiers?: FichierInterne[] | null };
@@ -138,7 +164,7 @@ function versResume(ligne: LigneResume) {
     nb_telechargements: Number(ligne.nb_telechargements ?? 0),
     source: sources ?? null,
     version: versions ? version : null,
-    ressources: restreinte ? [] : ressourcesDe(ligne.slug, fichiers ?? []),
+    ressources: restreinte ? [] : ressourcesDe(ligne.slug, fichiers ?? [], origineDe(ligne)),
     liens: { api: urlApiDonnee(ligne.slug), page: urlPageDonnee(ligne.slug) },
   };
 }
@@ -223,8 +249,18 @@ export function nomFichier(fichier: FichierInterne): string {
   return fichier.nom ?? fichier.cle_stockage.split("/").pop()!.replace(/\.[^.]+$/, "");
 }
 
-/** Fichiers regroupés par nom : chaque ressource existe en un ou plusieurs formats d'origine. */
-export function ressourcesDe(slug: string, fichiers: FichierInterne[]) {
+/** Source et licence de la donnée : celles d'un fichier qui n'en précise pas. */
+export interface OrigineDonnee {
+  source: { slug: string; nom: string } | null;
+  licence_code: string | null;
+}
+
+/**
+ * Fichiers regroupés par nom : chaque ressource existe en un ou plusieurs formats d'origine.
+ * `source` et `licence_code` : ceux du fichier, sinon ceux de la donnée (une donnée GeoAlgeria peut porter
+ * des fichiers OpenStreetMap ; la fiche propose alors de choisir la source à télécharger).
+ */
+export function ressourcesDe(slug: string, fichiers: FichierInterne[], origine: OrigineDonnee = { source: null, licence_code: null }) {
   const groupes = new Map<string, FichierInterne[]>();
   for (const fichier of fichiers) {
     const nom = nomFichier(fichier);
@@ -233,9 +269,13 @@ export function ressourcesDe(slug: string, fichiers: FichierInterne[]) {
   return [...groupes.entries()]
     .map(([nom, versions]) => {
       const natifs = versions.map((fichier) => fichier.format);
+      const propre = versions.find((fichier) => fichier.sources || fichier.licence_code);
+      const source = propre?.sources ?? origine.source;
       return {
         nom,
         principal: versions.some((fichier) => fichier.principal),
+        source: source ? { slug: source.slug, nom: source.nom } : null,
+        licence_code: propre?.licence_code ?? origine.licence_code,
         fichiers: versions.map((fichier) => ({
           format: fichier.format,
           taille_octets: fichier.taille_octets,
@@ -263,7 +303,7 @@ export function versFiche(ligne: LigneFiche, fichiers: FichierInterne[]) {
     licence: licences ?? null,
     // Donnée restreinte : colonnes et nombre de lignes restent, mais aucune ligne de données (pas d'aperçu).
     version: versions ? (restreinte ? { ...version, apercu: null } : version) : null,
-    ressources: restreinte ? [] : ressourcesDe(ligne.slug, fichiers),
+    ressources: restreinte ? [] : ressourcesDe(ligne.slug, fichiers, origineDe(ligne)),
   };
 }
 
