@@ -1,5 +1,7 @@
 // Ce que la synchronisation OpenStreetMap extrait, et où elle le range.
-// Ajouter une catégorie = ajouter un flux ici (et, pour une nouvelle donnée, son entrée dans NOUVELLES_DONNEES).
+// Depuis la migration 20261107000019, les flux vivent en base (`osm_flux`, réglés sur /admin/sync) : cette liste,
+// copiée par la migration, ne sert plus que de secours (base pas à jour, essai sans clé). Une nouvelle donnée créée
+// par la synchro garde ici son titre et sa description (NOUVELLES_DONNEES).
 // Candidats : `tags-algerie.md` (inventaire de tous les tags présents en Algérie, « pris » / « à étudier » / « écartés »).
 //
 // - `filtres` : expressions `osmium tags-filter` (`cle=valeur`, `cle=v1,v2`) ; un objet qui en vérifie une est pris.

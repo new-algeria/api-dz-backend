@@ -17,6 +17,24 @@ export interface DonneeApi {
   fichiers: FichierDonnee[];
 }
 
+export interface TagCompte {
+  cle: string;
+  valeur: string;
+  nb: number;
+}
+
+/** Ligne de `osm_flux` telle que la renvoie l'API. */
+export interface FluxBase {
+  code: string;
+  dataset_slug: string;
+  fichier: string;
+  filtres: string[];
+  exige: Record<string, string[]> | null;
+  rayon_m: number | null;
+  actif: boolean;
+  ordre: number;
+}
+
 export class ErreurAppel extends Error {
   constructor(
     readonly statut: number,
@@ -139,6 +157,21 @@ export class ClientApi {
 
   publierVersion(slug: string, corps: Record<string, unknown>) {
     return this.appel<{ numero: string; nb_lignes: number }>(`/v1/admin/datasets/${slug}/versions`, { method: "POST", body: JSON.stringify(corps) });
+  }
+
+  /** Flux réglés dans l'administration (`osm_flux`). */
+  async listerFlux() {
+    return (await this.appel<{ data: FluxBase[] }>("/v1/admin/sync/openstreetmap/flux")).data;
+  }
+
+  /** Inventaire actuel (pour un essai : comparer sans écrire). */
+  async lireInventaire() {
+    return (await this.appel<{ data: { cle: string; valeur: string }[] }>("/v1/admin/sync/openstreetmap/tags")).data;
+  }
+
+  /** Dépose l'inventaire du passage ; renvoie les tags apparus. */
+  async deposerInventaire(tags: TagCompte[], flux: { code: string; nb: number }[]) {
+    return (await this.appel<{ nouveaux: TagCompte[] }>("/v1/admin/sync/openstreetmap/tags", { method: "POST", body: JSON.stringify({ tags, flux }) })).nouveaux;
   }
 
   rapporter(code: string, execution: Record<string, unknown>) {

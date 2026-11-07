@@ -3,6 +3,7 @@ classés en « pris » (déjà dans FLUX), « à étudier » ou « écarté » (
 import re, sys
 
 tsv, categories, sortie, date = sys.argv[1:5]
+sortie_json = sys.argv[5] if len(sys.argv) > 5 else None
 
 src = open(categories, encoding="utf-8").read()
 pris = {}
@@ -14,7 +15,7 @@ for m in re.finditer(r'\{ code: "([^"]+)", slug: "([^"]+)"[^}]*?filtres: \[([^\]
             pris[(cle, v)] = slug
 
 # Clés entières sans intérêt comme « établissement ».
-CLES_BRUIT = {"landuse", "natural", "waterway", "building", "power", "railway", "sport", "public_transport"}
+CLES_BRUIT = {"landuse", "natural", "waterway", "building", "power", "railway", "sport", "public_transport", "highway", "place", "barrier"}
 # Valeurs utiles malgré une clé « bruit ».
 GARDER = {
     ("natural", "beach"), ("natural", "spring"), ("natural", "cave_entrance"), ("natural", "peak"),
@@ -24,7 +25,9 @@ GARDER = {
     ("landuse", "industrial"), ("landuse", "quarry"), ("landuse", "landfill"), ("landuse", "greenhouse_horticulture"),
     ("building", "mosque"), ("building", "hospital"), ("building", "school"), ("building", "university"),
     ("building", "stadium"), ("building", "train_station"), ("building", "church"), ("building", "government"),
-    ("public_transport", "station"),
+    ("public_transport", "station"), ("highway", "bus_stop"), ("highway", "rest_area"), ("highway", "services"),
+    ("highway", "speed_camera"), ("highway", "traffic_signals"), ("place", "city"), ("place", "town"), ("place", "village"),
+    ("place", "hamlet"), ("place", "suburb"), ("place", "neighbourhood"), ("barrier", "border_control"), ("barrier", "toll_booth"),
 }
 BRUIT = {
     "amenity": {"parking", "bench", "waste_basket", "toilets", "drinking_water", "shelter", "parking_space",
@@ -70,7 +73,7 @@ md = f"""# Tags OpenStreetMap présents en Algérie
 Inventaire du {date} : extrait Geofabrik `algeria-latest.osm.pbf`, tous les `clé=valeur` d'au moins 30 objets
 pour les clés d'équipements (amenity, shop, office, healthcare, leisure, tourism, man_made, power, historic, craft,
 emergency, aeroway, railway, military, government, education, telecom, industrial, landuse, natural, waterway,
-building, sport, public_transport). Le nombre compte nœuds + chemins + relations.
+building, sport, public_transport, highway, place, barrier). Le nombre compte nœuds + chemins + relations.
 
 Refaire l'inventaire : `osmium tags-count -m 30 -s count-desc -o tags.tsv algeria.osm.pbf 'amenity=*' 'shop=*' …`
 puis `python3 scripts/osm/outils/catalogue_tags.py tags.tsv scripts/osm/categories.ts scripts/osm/tags-algerie.md AAAA-MM-JJ`.
@@ -92,4 +95,7 @@ Les tags absents de cette liste (moins de 30 objets ou autre clé) se cherchent 
 {tableau("ecarte")}
 """
 open(sortie, "w", encoding="utf-8").write(md)
+if sortie_json:
+    import json
+    json.dump([{"cle": c, "valeur": v, "nb": n, "etat": e} for n, c, v, e in lignes], open(sortie_json, "w", encoding="utf-8"), ensure_ascii=False)
 print(nb)

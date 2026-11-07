@@ -21,7 +21,7 @@ Node 22 obligatoire, y compris en local : sous Node 20, supabase-js plante à la
 
 - **Droits d'administration** : `exigerAdmin` accepte `CLE_SYNCHRO` ou un membre admin / dont le rôle porte la permission de la route (`permissionRequise()` : `synchro.gerer` pour `/v1/admin/sync`, sinon `donnees.gerer`). Liste des permissions dans `src/lib/permissions.ts`, identique à la contrainte `roles.permissions` de la base et à `src/lib/roles.ts` du site : les trois changent ensemble.
 - **Fichiers par source** : `fichiers.source_id` / `licence_code` (migration 20261102000017), lus via le marqueur `SOURCE_FICHIERS` des `select` (retiré tant que la migration manque) ; chaque ressource sort avec `source` et `licence_code`.
-- **Synchronisation OpenStreetMap** : `scripts/osm/` (README, section dédiée) et `.github/workflows/osm-sync.yml`. Jamais Overpass en production. Les fichiers OSM s'ajoutent aux précédents, rien n'est supprimé.
+- **Synchronisation OpenStreetMap** : `scripts/osm/` (README, section dédiée) et `.github/workflows/osm-sync.yml`. Jamais Overpass dans le robot (seul le bouton « tester » de l'admin fait un `out count`). Les fichiers OSM s'ajoutent aux précédents, rien n'est supprimé. Les flux (tag → donnée → fichier) sont en base (`osm_flux`, `src/lib/osm-flux.ts`) ; `categories.ts` est le secours. Format d'une expression : `src/lib/osm-format.ts`, partagé avec le robot.
 
 ## Tests (à étendre)
 Vitest couvre la conversion, la validation des paramètres, la limite de débit et quelques erreurs. À prévoir : routes publiques et admin avec un Supabase et un R2 simulés (liste, fiche, `/data`, `/download`, création, version, illustration), et un contrôle du schéma de la base cible (chaque colonne lue par l'API existe) avant chaque déploiement.

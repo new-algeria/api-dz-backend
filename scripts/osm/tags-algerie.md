@@ -3,15 +3,15 @@
 Inventaire du 2026-11-07 : extrait Geofabrik `algeria-latest.osm.pbf`, tous les `clé=valeur` d'au moins 30 objets
 pour les clés d'équipements (amenity, shop, office, healthcare, leisure, tourism, man_made, power, historic, craft,
 emergency, aeroway, railway, military, government, education, telecom, industrial, landuse, natural, waterway,
-building, sport, public_transport). Le nombre compte nœuds + chemins + relations.
+building, sport, public_transport, highway, place, barrier). Le nombre compte nœuds + chemins + relations.
 
 Refaire l'inventaire : `osmium tags-count -m 30 -s count-desc -o tags.tsv algeria.osm.pbf 'amenity=*' 'shop=*' …`
 puis `python3 scripts/osm/outils/catalogue_tags.py tags.tsv scripts/osm/categories.ts scripts/osm/tags-algerie.md AAAA-MM-JJ`.
 Vue en ligne, mise à jour chaque jour : https://taginfo.geofabrik.de/africa:algeria/
 
 - **Pris** (46) : déjà extraits par un flux de `categories.ts`.
-- **À étudier** (183) : candidats pour un nouveau flux (ajouter une ligne dans `categories.ts`).
-- **Écartés** (199) : bruit cartographique (poteaux, arbres, bâtiments sans type, parkings…).
+- **À étudier** (196) : candidats pour un nouveau flux (ajouter une ligne dans `categories.ts`).
+- **Écartés** (258) : bruit cartographique (poteaux, arbres, bâtiments sans type, parkings…).
 
 Les tags absents de cette liste (moins de 30 objets ou autre clé) se cherchent sur taginfo.
 
@@ -69,12 +69,15 @@ Les tags absents de cette liste (moins de 30 objets ou autre clé) se cherchent 
 | Tag | Objets |
 |---|---:|
 | `historic=archaeological_site` | 45 850 |
+| `place=hamlet` | 8 469 |
 | `landuse=industrial` | 6 457 |
+| `place=village` | 6 120 |
 | `amenity=post_office` | 5 426 |
 | `power=generator` | 4 692 |
 | `natural=peak` | 4 669 |
 | `amenity=cafe` | 4 617 |
 | `landuse=quarry` | 4 386 |
+| `highway=bus_stop` | 4 228 |
 | `landuse=greenhouse_horticulture` | 3 157 |
 | `shop=convenience` | 2 948 |
 | `building=school` | 2 867 |
@@ -85,6 +88,7 @@ Les tags absents de cette liste (moins de 30 objets ou autre clé) se cherchent 
 | `amenity=fast_food` | 1 796 |
 | `shop=clothes` | 1 419 |
 | `shop=bakery` | 1 400 |
+| `place=neighbourhood` | 1 185 |
 | `shop=car_repair` | 1 137 |
 | `man_made=works` | 1 056 |
 | `office=company` | 1 051 |
@@ -99,12 +103,15 @@ Les tags absents de cette liste (moins de 30 objets ou autre clé) se cherchent 
 | `shop=kiosk` | 753 |
 | `shop=mobile_phone` | 745 |
 | `shop=hardware` | 717 |
+| `highway=traffic_signals` | 712 |
+| `place=suburb` | 683 |
 | `shop=car_parts` | 657 |
 | `natural=volcano` | 649 |
 | `man_made=water_well` | 632 |
 | `natural=spring` | 614 |
 | `amenity=community_centre` | 586 |
 | `building=hospital` | 580 |
+| `place=town` | 576 |
 | `man_made=reservoir_covered` | 575 |
 | `office=telecommunication` | 566 |
 | `shop=computer` | 531 |
@@ -121,6 +128,7 @@ Les tags absents de cette liste (moins de 30 objets ou autre clé) se cherchent 
 | `railway=tram_stop` | 356 |
 | `shop=travel_agency` | 345 |
 | `education=school` | 320 |
+| `highway=rest_area` | 320 |
 | `shop=furniture` | 311 |
 | `tourism=camp_site` | 310 |
 | `man_made=flare` | 290 |
@@ -164,6 +172,7 @@ Les tags absents de cette liste (moins de 30 objets ou autre clé) se cherchent 
 | `amenity=veterinary` | 138 |
 | `shop=optician` | 138 |
 | `shop=gift` | 137 |
+| `highway=speed_camera` | 132 |
 | `military=checkpoint` | 129 |
 | `building=stadium` | 128 |
 | `shop=tobacco` | 126 |
@@ -187,11 +196,14 @@ Les tags absents de cette liste (moins de 30 objets ou autre clé) se cherchent 
 | `office=security` | 80 |
 | `craft=tailor` | 79 |
 | `man_made=gasometer` | 78 |
+| `place=city` | 78 |
+| `highway=services` | 77 |
 | `man_made=water_works` | 77 |
 | `amenity=public_bath` | 76 |
 | `office=association` | 75 |
 | `amenity=animal_breeding` | 73 |
 | `amenity=studio` | 73 |
+| `barrier=border_control` | 73 |
 | `military=bunker` | 73 |
 | `office=architect` | 72 |
 | `natural=cave_entrance` | 70 |
@@ -212,6 +224,7 @@ Les tags absents de cette liste (moins de 30 objets ou autre clé) se cherchent 
 | `craft=shoemaker` | 59 |
 | `man_made=surveillance` | 58 |
 | `shop=motorcycle` | 58 |
+| `barrier=toll_booth` | 57 |
 | `military=base` | 57 |
 | `shop=laundry` | 56 |
 | `leisure=sports_hall` | 55 |
@@ -256,21 +269,32 @@ Les tags absents de cette liste (moins de 30 objets ou autre clé) se cherchent 
 | Tag | Objets |
 |---|---:|
 | `building=yes` | 3 905 205 |
+| `highway=residential` | 408 931 |
 | `power=pole` | 163 837 |
 | `building=house` | 115 120 |
 | `power=tower` | 104 980 |
 | `natural=tree` | 80 088 |
+| `highway=service` | 76 915 |
+| `highway=unclassified` | 53 237 |
+| `highway=track` | 45 441 |
 | `building=residential` | 39 370 |
 | `waterway=stream` | 34 377 |
 | `landuse=orchard` | 27 388 |
+| `barrier=wall` | 27 085 |
 | `landuse=farmland` | 21 528 |
 | `natural=wood` | 20 796 |
+| `highway=tertiary` | 20 459 |
 | `landuse=residential` | 20 266 |
 | `building=apartments` | 19 043 |
+| `highway=secondary` | 18 375 |
+| `highway=primary` | 17 554 |
 | `natural=bare_rock` | 17 184 |
+| `highway=footway` | 16 003 |
 | `natural=sand` | 15 384 |
 | `power=minor_line` | 13 329 |
 | `natural=cliff` | 13 259 |
+| `highway=path` | 10 989 |
+| `highway=trunk` | 9 613 |
 | `building=terrace` | 9 150 |
 | `natural=shingle` | 8 100 |
 | `waterway=river` | 8 048 |
@@ -278,25 +302,40 @@ Les tags absents de cette liste (moins de 30 objets ou autre clé) se cherchent 
 | `natural=ridge` | 7 498 |
 | `landuse=grass` | 6 305 |
 | `man_made=petroleum_well` | 5 900 |
+| `barrier=gate` | 5 781 |
 | `power=switch` | 5 672 |
 | `natural=scrub` | 5 632 |
 | `railway=rail` | 5 365 |
 | `natural=water` | 4 892 |
+| `barrier=fence` | 4 631 |
 | `public_transport=platform` | 4 374 |
 | `natural=tree_row` | 4 365 |
 | `building=industrial` | 3 974 |
 | `sport=soccer` | 3 619 |
+| `highway=construction` | 3 389 |
+| `highway=steps` | 3 280 |
+| `highway=motorway` | 3 256 |
+| `highway=trunk_link` | 3 149 |
+| `highway=living_street` | 2 905 |
 | `building=construction` | 2 830 |
+| `highway=motorway_link` | 2 732 |
 | `man_made=pipeline` | 2 729 |
 | `landuse=farmyard` | 2 669 |
 | `man_made=tower` | 2 492 |
+| `highway=primary_link` | 2 488 |
 | `aeroway=taxiway` | 2 476 |
 | `leisure=garden` | 2 440 |
+| `barrier=retaining_wall` | 2 431 |
 | `power=line` | 2 332 |
 | `waterway=waterfall` | 2 256 |
+| `highway=crossing` | 2 105 |
 | `railway=level_crossing` | 2 063 |
+| `highway=street_lamp` | 1 938 |
+| `highway=pedestrian` | 1 926 |
 | `landuse=forest` | 1 883 |
 | `man_made=storage_tank` | 1 702 |
+| `place=locality` | 1 539 |
+| `highway=secondary_link` | 1 475 |
 | `public_transport=stop_position` | 1 452 |
 | `power=transformer` | 1 368 |
 | `man_made=embankment` | 1 358 |
@@ -306,17 +345,22 @@ Les tags absents de cette liste (moins de 30 objets ou autre clé) se cherchent 
 | `landuse=basin` | 1 204 |
 | `amenity=bench` | 1 178 |
 | `building=greenhouse` | 1 169 |
+| `barrier=hedge` | 1 147 |
 | `natural=grassland` | 1 067 |
+| `highway=give_way` | 1 020 |
+| `highway=motorway_junction` | 1 004 |
 | `landuse=construction` | 974 |
 | `building=proposed` | 973 |
 | `man_made=mast` | 940 |
 | `man_made=utility_pole` | 930 |
 | `waterway=canal` | 925 |
+| `highway=stop` | 916 |
 | `railway=switch` | 887 |
 | `building=barrier` | 868 |
 | `building=public` | 845 |
 | `building=detached` | 792 |
 | `building=commercial` | 777 |
+| `highway=tertiary_link` | 757 |
 | `building=roof` | 732 |
 | `tourism=attraction` | 718 |
 | `amenity=fountain` | 703 |
@@ -332,20 +376,25 @@ Les tags absents de cette liste (moins de 30 objets ou autre clé) se cherchent 
 | `natural=shrub` | 570 |
 | `natural=coastline` | 560 |
 | `landuse=vineyard` | 554 |
+| `barrier=kerb` | 544 |
 | `amenity=shelter` | 543 |
 | `building=semidetached_house` | 538 |
 | `railway=tram` | 532 |
+| `highway=turning_circle` | 531 |
 | `waterway=ditch` | 524 |
 | `building=dormitory` | 517 |
+| `barrier=yes` | 494 |
 | `sport=basketball` | 486 |
 | `leisure=swimming_pool` | 483 |
 | `aeroway=hangar` | 479 |
 | `leisure=playground` | 471 |
 | `railway=platform` | 459 |
+| `place=isolated_dwelling` | 455 |
 | `man_made=silo` | 444 |
 | `railway=disused` | 441 |
 | `natural=scree` | 438 |
 | `public_transport=stop_area` | 436 |
+| `barrier=city_wall` | 433 |
 | `power=catenary_mast` | 428 |
 | `railway=tram_level_crossing` | 411 |
 | `building=office` | 388 |
@@ -355,9 +404,11 @@ Les tags absents de cette liste (moins de 30 objets ou autre clé) se cherchent 
 | `railway=abandoned` | 375 |
 | `building=retail` | 374 |
 | `building=garage` | 363 |
+| `place=quarter` | 362 |
 | `historic=memorial` | 338 |
 | `shop=yes` | 324 |
 | `man_made=chimney` | 319 |
+| `place=square` | 316 |
 | `aeroway=helipad` | 310 |
 | `emergency=yes` | 306 |
 | `tourism=artwork` | 301 |
@@ -367,10 +418,14 @@ Les tags absents de cette liste (moins de 30 objets ou autre clé) se cherchent 
 | `sport=tennis` | 279 |
 | `tourism=information` | 269 |
 | `aeroway=runway` | 265 |
+| `highway=cycleway` | 256 |
 | `building=bungalow` | 252 |
+| `barrier=block` | 241 |
 | `building=college` | 239 |
 | `amenity=grave_yard` | 238 |
 | `leisure=track` | 235 |
+| `barrier=ditch` | 231 |
+| `highway=road` | 217 |
 | `aeroway=apron` | 216 |
 | `building=storage_tank` | 216 |
 | `natural=heath` | 211 |
@@ -380,6 +435,7 @@ Les tags absents de cette liste (moins de 30 objets ou autre clé) se cherchent 
 | `railway=buffer_stop` | 195 |
 | `amenity=parking_space` | 182 |
 | `building=hotel` | 171 |
+| `highway=mini_roundabout` | 168 |
 | `man_made=breakwater` | 167 |
 | `man_made=pier` | 167 |
 | `building=service` | 166 |
@@ -388,10 +444,16 @@ Les tags absents de cette liste (moins de 30 objets ou autre clé) se cherchent 
 | `amenity=waste_basket` | 158 |
 | `building=cabin` | 157 |
 | `office=yes` | 153 |
+| `barrier=lift_gate` | 145 |
 | `man_made=flagpole` | 144 |
+| `barrier=entrance` | 142 |
 | `amenity=waste_disposal` | 138 |
+| `place=islet` | 133 |
+| `place=farm` | 127 |
 | `tourism=picnic_site` | 122 |
+| `barrier=jersey_barrier` | 121 |
 | `building=kindergarten` | 120 |
+| `place=city_block` | 119 |
 | `building=chicken_coop` | 118 |
 | `building=barn` | 117 |
 | `natural=rock` | 116 |
@@ -410,7 +472,9 @@ Les tags absents de cette liste (moins de 30 objets ou autre clé) se cherchent 
 | `landuse=recreation_ground` | 91 |
 | `railway=subway` | 91 |
 | `landuse=allotments` | 89 |
+| `place=plot` | 88 |
 | `building=hut` | 86 |
+| `highway=turning_loop` | 83 |
 | `historic=tomb` | 82 |
 | `railway=stop` | 82 |
 | `man_made=pumping_station` | 76 |
@@ -422,25 +486,32 @@ Les tags absents de cette liste (moins de 30 objets ou autre clé) se cherchent 
 | `building=silo` | 68 |
 | `natural=yes` | 67 |
 | `building=static_caravan` | 66 |
+| `barrier=bollard` | 65 |
 | `landuse=religious` | 64 |
 | `man_made=street_cabinet` | 63 |
 | `landuse=flowerbed` | 62 |
 | `historic=yes` | 60 |
 | `railway=subway_entrance` | 59 |
+| `place=region` | 57 |
 | `building=bunker` | 56 |
 | `landuse=railway` | 56 |
 | `sport=football` | 56 |
+| `highway=platform` | 54 |
 | `man_made=water_tap` | 53 |
 | `natural=reef` | 53 |
+| `highway=elevator` | 52 |
 | `sport=athletics` | 49 |
 | `amenity=water_point` | 48 |
+| `highway=corridor` | 45 |
 | `amenity=bicycle_parking` | 43 |
 | `railway=proposed` | 43 |
 | `building=farm` | 42 |
 | `power=converter` | 42 |
 | `power=insulator` | 42 |
+| `highway=bridleway` | 41 |
 | `sport=handball` | 40 |
 | `government=yes` | 39 |
+| `highway=milestone` | 39 |
 | `man_made=manhole` | 39 |
 | `leisure=common` | 38 |
 | `sport=volleyball` | 37 |
@@ -448,6 +519,7 @@ Les tags absents de cette liste (moins de 30 objets ou autre clé) se cherchent 
 | `emergency=fire_hydrant` | 33 |
 | `landuse=education` | 33 |
 | `amenity=motorcycle_parking` | 32 |
+| `highway=raceway` | 32 |
 | `sport=boules` | 32 |
 | `aeroway=gate` | 31 |
 | `amenity=recycling` | 30 |
