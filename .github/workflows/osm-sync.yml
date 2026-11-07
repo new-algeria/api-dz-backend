@@ -1,0 +1,64 @@
+# Synchronisation OpenStreetMap → data-dz (scripts/osm).
+# Passe chaque jour, mais ne travaille qu'à l'échéance réglée dans l'administration du site (/admin/sync :
+# active, intervalle, « forcer au prochain passage »). Un passage télécharge une seule fois l'extrait Geofabrik
+# de l'Algérie (~300 Mo), le filtre avec osmium, complète les fichiers déjà publiés et ne republie que ce qui a changé.
+# Aucun appel à Overpass : aucune limite d'API publique à surveiller.
+#
+# Secrets du dépôt : API_URL (https://api.data-dz.com), CLE_SYNCHRO (même valeur que dans Vercel).
+# OSM_SYNC_INTERVAL_DAYS (variable ou secret) : intervalle de repli tant que l'administration n'a pas ses réglages.
+name: Synchro OpenStreetMap
+
+on:
+  schedule:
+    # L'extrait Geofabrik de la nuit est publié vers 4 h UTC.
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+    inputs:
+      essai:
+        description: "Essai : tout calculer et rapporter, ne rien publier"
+        type: boolean
+        default: true
+      forcer:
+        description: "Forcer : ignorer l'échéance"
+        type: boolean
+        default: false
+      seulement:
+        description: "Seulement ces données (slugs séparés par des virgules, vide = toutes)"
+        type: string
+        default: ""
+
+concurrency:
+  group: osm-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  synchro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Installer osmium
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
+
+      - name: Synchroniser
+        env:
+          API_URL: ${{ secrets.API_URL }}
+          CLE_SYNCHRO: ${{ secrets.CLE_SYNCHRO }}
+          OSM_SYNC_INTERVAL_DAYS: ${{ vars.OSM_SYNC_INTERVAL_DAYS || secrets.OSM_SYNC_INTERVAL_DAYS }}
+          # Champs du lancement manuel, passés en variables (jamais injectés dans la commande).
+          SYNCHRO_ESSAI: ${{ inputs.essai }}
+          SYNCHRO_FORCER: ${{ inputs.forcer }}
+          SYNCHRO_SEULEMENT: ${{ inputs.seulement }}
+          SYNCHRO_DOSSIER: ${{ runner.temp }}/osm
+        run: npx tsx scripts/osm/synchro.ts
