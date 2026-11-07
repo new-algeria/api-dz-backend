@@ -1,5 +1,6 @@
 // Ce que la synchronisation OpenStreetMap extrait, et où elle le range.
 // Ajouter une catégorie = ajouter un flux ici (et, pour une nouvelle donnée, son entrée dans NOUVELLES_DONNEES).
+// Candidats : `tags-algerie.md` (inventaire de tous les tags présents en Algérie, « pris » / « à étudier » / « écartés »).
 //
 // - `filtres` : expressions `osmium tags-filter` (`cle=valeur`, `cle=v1,v2`) ; un objet qui en vérifie une est pris.
 // - `exige` : conditions en plus, vérifiées ensuite (valeur exacte, ou l'une des valeurs d'une liste « a;b »).
