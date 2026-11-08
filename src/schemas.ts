@@ -137,5 +137,6 @@ const DESCRIPTIONS_ERREUR = {
   413: "Réponse ou envoi trop volumineux",
   422: "Conversion impossible pour ce fichier",
   429: "Trop de requêtes (voir les en-têtes RateLimit et Retry-After)",
+  502: "Service externe ou base indisponible",
   503: "Service non configuré",
 } as const;

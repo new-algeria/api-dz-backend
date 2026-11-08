@@ -24,6 +24,19 @@ import { sansCache } from "../lib/cache-http.js";
 import { publierProposition } from "../lib/propositions.js";
 import { ErreurApi } from "../lib/erreurs.js";
 import { chargerSynchro, DECLENCHEURS, enregistrerExecution, listerSynchros, modifierSynchro, STATUTS_EXECUTION } from "../lib/synchro.js";
+import {
+  classerTag,
+  compterTag,
+  deposerInventaire,
+  enregistrerFlux,
+  ETATS_TAG,
+  FORMAT_CLE,
+  FORMAT_VALEUR,
+  listerFlux,
+  listerTags,
+  modifierFlux,
+  supprimerFlux,
+} from "../lib/osm-flux.js";
 import { exigerAdmin } from "../middleware/admin.js";
 import { limiteDebit } from "../middleware/limite-debit.js";
 import { NomFichier, ParamsSlug, reponsesErreur, Slug } from "../schemas.js";
@@ -507,6 +520,191 @@ routesAdmin.openapi(
     responses: { ...cree(z.object({ id: z.string() }), "Exécution enregistrée"), ...reponsesErreur(400, 401, 403, 404, 503) },
   }),
   async (c) => c.json(await enregistrerExecution(c.req.valid("param").code, c.req.valid("json")), 201)
+);
+
+// ---------------------------------------------------------------- Tags OpenStreetMap (flux et inventaire)
+
+const CleOsm = z.string().regex(FORMAT_CLE).openapi({ example: "amenity" });
+const ValeurOsm = z.string().max(80).regex(FORMAT_VALEUR).openapi({ example: "cafe" });
+const FluxOsm = z.record(z.string(), z.unknown()).openapi("FluxOsm");
+const ParamsFlux = z.object({ flux: z.string().regex(/^[a-z0-9-]{2,40}$/).openapi({ param: { name: "flux", in: "path" }, example: "pharmacies" }) });
+
+routesAdmin.openapi(
+  createRoute({
+    method: "get",
+    path: "/v1/admin/sync/openstreetmap/flux",
+    tags: ["Synchronisations"],
+    summary: "Flux OpenStreetMap : quels tags vont dans quel fichier de quelle donnée",
+    description: "Lu par le robot à chaque passage (il n'extrait que les flux actifs). Le premier flux (`ordre`) d'une donnée OpenStreetMap en est le fichier principal.",
+    security: securite,
+    responses: { ...ok(z.object({ data: z.array(FluxOsm) }), "Flux"), ...reponsesErreur(401, 403, 503) },
+  }),
+  async (c) => c.json({ data: await listerFlux() }, 200)
+);
+
+routesAdmin.openapi(
+  createRoute({
+    method: "put",
+    path: "/v1/admin/sync/openstreetmap/flux/{flux}",
+    tags: ["Synchronisations"],
+    summary: "Créer ou remplacer un flux OpenStreetMap",
+    description: "Le robot l'extrait au passage suivant. La donnée cible doit exister. 400 `unknown_dataset`, 409 `conflict` (nom de fichier déjà pris dans la donnée).",
+    security: securite,
+    request: {
+      params: ParamsFlux,
+      body: {
+        content: {
+          "application/json": {
+            schema: z.object({
+              dataset_slug: Slug,
+              fichier: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/),
+              cle: CleOsm,
+              valeurs: z.array(ValeurOsm).min(1).max(20),
+              exige: z.record(CleOsm, z.array(ValeurOsm).min(1).max(20)).optional(),
+              rayon_m: z.number().int().min(10).max(20000).nullable().optional(),
+              actif: z.boolean().optional(),
+              ordre: z.number().int().min(0).max(100000).optional(),
+            }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: { ...ok(FluxOsm, "Flux enregistré"), ...reponsesErreur(400, 401, 403, 409, 503) },
+  }),
+  async (c) => c.json(await enregistrerFlux(c.req.valid("param").flux, c.req.valid("json")), 200)
+);
+
+routesAdmin.openapi(
+  createRoute({
+    method: "patch",
+    path: "/v1/admin/sync/openstreetmap/flux/{flux}",
+    tags: ["Synchronisations"],
+    summary: "Activer, désactiver ou régler un flux OpenStreetMap",
+    security: securite,
+    request: {
+      params: ParamsFlux,
+      body: {
+        content: {
+          "application/json": {
+            schema: z.object({
+              actif: z.boolean().optional(),
+              rayon_m: z.number().int().min(10).max(20000).nullable().optional(),
+              ordre: z.number().int().min(0).max(100000).optional(),
+            }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: { ...ok(FluxOsm, "Flux modifié"), ...reponsesErreur(400, 401, 403, 404, 503) },
+  }),
+  async (c) => c.json(await modifierFlux(c.req.valid("param").flux, c.req.valid("json")), 200)
+);
+
+routesAdmin.openapi(
+  createRoute({
+    method: "delete",
+    path: "/v1/admin/sync/openstreetmap/flux/{flux}",
+    tags: ["Synchronisations"],
+    summary: "Retirer un flux OpenStreetMap",
+    description: "Le robot ne l'extrait plus ; le fichier déjà publié reste en ligne.",
+    security: securite,
+    request: { params: ParamsFlux },
+    responses: { 204: { description: "Flux retiré" }, ...reponsesErreur(401, 403, 404, 503) },
+  }),
+  async (c) => {
+    await supprimerFlux(c.req.valid("param").flux);
+    return c.body(null, 204);
+  }
+);
+
+routesAdmin.openapi(
+  createRoute({
+    method: "get",
+    path: "/v1/admin/sync/openstreetmap/tags",
+    tags: ["Synchronisations"],
+    summary: "Inventaire des tags OpenStreetMap de l'Algérie (au moins 30 objets)",
+    description: "`etat` : nouveau (apparu depuis le passage précédent), a_etudier ou ecarte. `flux` : code du flux qui l'extrait déjà, sinon null.",
+    security: securite,
+    responses: {
+      ...ok(z.object({ data: z.array(z.record(z.string(), z.unknown())), inventaire_du: z.string().nullable() }), "Inventaire"),
+      ...reponsesErreur(401, 403, 503),
+    },
+  }),
+  async (c) => c.json(await listerTags(), 200)
+);
+
+routesAdmin.openapi(
+  createRoute({
+    method: "patch",
+    path: "/v1/admin/sync/openstreetmap/tags",
+    tags: ["Synchronisations"],
+    summary: "Classer un tag de l'inventaire (à étudier, écarté)",
+    security: securite,
+    request: {
+      body: { content: { "application/json": { schema: z.object({ cle: CleOsm, valeur: z.string().min(1).max(200), etat: z.enum(ETATS_TAG) }) } }, required: true },
+    },
+    responses: { 204: { description: "Tag classé" }, ...reponsesErreur(400, 401, 403, 404, 503) },
+  }),
+  async (c) => {
+    const { cle, valeur, etat } = c.req.valid("json");
+    await classerTag(cle, valeur, etat);
+    return c.body(null, 204);
+  }
+);
+
+routesAdmin.openapi(
+  createRoute({
+    method: "post",
+    path: "/v1/admin/sync/openstreetmap/tags",
+    tags: ["Synchronisations"],
+    summary: "Déposer l'inventaire des tags (robot de synchronisation)",
+    description: "Met à jour les comptages, ajoute les tags apparus (« nouveau ») et le nombre d'objets de chaque flux. Renvoie les tags apparus.",
+    security: securite,
+    request: {
+      body: {
+        content: {
+          "application/json": {
+            schema: z.object({
+              tags: z.array(z.object({ cle: z.string().min(1).max(100), valeur: z.string().min(1).max(200), nb: z.number().int().min(0) })).max(20000),
+              flux: z.array(z.object({ code: z.string().max(40), nb: z.number().int().min(0) })).max(1000).default([]),
+            }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: { ...ok(z.object({ nouveaux: z.array(z.object({ cle: z.string(), valeur: z.string(), nb: z.number() })) }), "Inventaire enregistré"), ...reponsesErreur(400, 401, 403, 413, 503) },
+  }),
+  async (c) => {
+    const { tags, flux } = c.req.valid("json");
+    return c.json(await deposerInventaire(tags, flux), 200);
+  }
+);
+
+routesAdmin.openapi(
+  createRoute({
+    method: "get",
+    path: "/v1/admin/sync/openstreetmap/count",
+    tags: ["Synchronisations"],
+    summary: "Tester un tag : nombre d'objets en Algérie",
+    description: "Depuis l'inventaire du dernier passage s'il connaît ces valeurs, sinon une requête Overpass `out count`. 502 `overpass_unavailable` si Overpass ne répond pas.",
+    security: securite,
+    request: { query: z.object({ cle: CleOsm, valeurs: z.string().min(1).max(500) }) },
+    responses: {
+      ...ok(z.object({ nb: z.number(), source: z.enum(["inventaire", "overpass"]), date: z.string().nullable() }), "Comptage"),
+      ...reponsesErreur(400, 401, 403, 502, 503),
+    },
+  }),
+  async (c) => {
+    const { cle, valeurs } = c.req.valid("query");
+    const liste = [...new Set(valeurs.split(",").map((valeur) => valeur.trim()).filter(Boolean))];
+    if (liste.length === 0 || liste.length > 20 || !liste.every((valeur) => FORMAT_VALEUR.test(valeur) && valeur.length <= 80)) {
+      throw new ErreurApi(400, "invalid_parameter", "Valeurs invalides : lettres, chiffres, « _ : . + - », séparées par des virgules.");
+    }
+    return c.json(await compterTag(cle, liste), 200);
+  }
 );
 
 // ---------------------------------------------------------------- Propositions

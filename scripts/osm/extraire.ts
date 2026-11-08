@@ -2,7 +2,7 @@
 
 import { spawn } from "node:child_process";
 import { createReadStream, createWriteStream, existsSync } from "node:fs";
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
@@ -64,4 +64,25 @@ export async function extraireFlux(extrait: string, dossier: string, flux: Flux[
     for (const cible of cibles) parFlux.get(cible.code)!.push(objet);
   }
   return parFlux;
+}
+
+/** Clés inventoriées à chaque passage (en plus de celles des flux) : équipements et lieux, pas la géométrie. */
+export const CLES_INVENTAIRE = [
+  "amenity", "shop", "office", "healthcare", "leisure", "tourism", "man_made", "power", "historic", "craft", "emergency",
+  "public_transport", "aeroway", "railway", "military", "government", "landuse", "natural", "waterway", "building",
+  "sport", "education", "telecom", "industrial", "highway", "place", "barrier",
+];
+export const SEUIL_INVENTAIRE = 30;
+
+/** Tous les « clé=valeur » d'au moins 30 objets pour ces clés (osmium tags-count, une passe sur l'extrait). */
+export async function inventaireTags(extrait: string, dossier: string, cles: string[]): Promise<{ cle: string; valeur: string; nb: number }[]> {
+  const sortie = join(dossier, "tags.tsv");
+  await lancer("osmium", ["tags-count", "--overwrite", "-m", String(SEUIL_INVENTAIRE), "-s", "count-desc", "-o", sortie, extrait, ...cles.map((cle) => `${cle}=*`)]);
+  const tags = [];
+  for (const ligne of (await readFile(sortie, "utf8")).split("\n")) {
+    const [nb, cle, valeur] = ligne.split("\t");
+    if (!valeur) continue;
+    tags.push({ cle: cle.replace(/^"|"$/g, ""), valeur: valeur.replace(/^"|"$/g, ""), nb: Number(nb) });
+  }
+  return tags;
 }

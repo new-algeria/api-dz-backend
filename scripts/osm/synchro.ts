@@ -9,9 +9,10 @@
 
 import { createHash } from "node:crypto";
 import { appendFile, mkdir } from "node:fs/promises";
-import { ClientApi, ErreurAppel, type DonneeApi } from "./api.js";
+import { FORMAT_FILTRE } from "../../src/lib/osm-format.js";
+import { ClientApi, ErreurAppel, type DonneeApi, type TagCompte } from "./api.js";
 import { FLUX, NOUVELLES_DONNEES, type Flux } from "./categories.js";
-import { dateExtrait, extraireFlux, telechargerExtrait } from "./extraire.js";
+import { CLES_INVENTAIRE, dateExtrait, extraireFlux, inventaireTags, telechargerExtrait } from "./extraire.js";
 import { baisseAnormale, fusionner, numeroComplement, rapprocher, serialiser, type Objet, type RapportFusion } from "./fusion.js";
 
 const CODE = "openstreetmap";
@@ -31,6 +32,8 @@ const sha256 = (texte: string) => createHash("sha256").update(texte).digest("hex
 
 interface RapportFichier extends Partial<RapportFusion> {
   extraits: number;
+  /** Aucun objet trouvé et rien de publié avant : fichier ignoré (tag mal écrit, ou absent d'Algérie). */
+  vide?: boolean;
   geoalgeria?: number;
   change: boolean;
 }
@@ -52,10 +55,10 @@ function lireObjets(texte: string | null): Objet[] {
 }
 
 /** Métadonnées d'une nouvelle donnée OpenStreetMap (créée publiée par `PUT`, comme le fait la synchro GeoAlgeria). */
-function champsNouvelleDonnee(slug: string) {
+function champsNouvelleDonnee(slug: string, tousLesFlux: Flux[]) {
   const nouvelle = NOUVELLES_DONNEES.find((donnee) => donnee.slug === slug);
   if (!nouvelle) return null;
-  const filtres = FLUX.filter((flux) => flux.slug === slug).flatMap((flux) => flux.filtres.map((filtre) => `\`${filtre.replace(/^nwr\//, "")}\``));
+  const filtres = tousLesFlux.filter((flux) => flux.slug === slug).flatMap((flux) => flux.filtres.map((filtre) => `\`${filtre.replace(/^nwr\//, "")}\``));
   return {
     titre: nouvelle.titre,
     description: nouvelle.description,
@@ -108,12 +111,50 @@ async function main() {
     }
   }
 
-  const flux = FLUX.filter((f) => !seulement || seulement.includes(f.slug));
+  // 2. Flux réglés dans l'administration (/admin/sync) ; ceux du code (categories.ts) tant que la base ne les a pas.
+  let origineFlux = "administration";
+  let tousLesFlux: Flux[];
+  try {
+    if (api.lecturePublique) throw new ErreurAppel(401, "lecture publique");
+    tousLesFlux = (await api.listerFlux())
+      .filter((f) => f.actif)
+      .sort((a, b) => a.ordre - b.ordre || a.code.localeCompare(b.code))
+      .map((f) => ({ code: f.code, slug: f.dataset_slug, fichier: f.fichier, filtres: f.filtres, exige: f.exige ?? undefined, rayon_m: f.rayon_m ?? undefined }));
+  } catch (erreur) {
+    if (!(erreur instanceof ErreurAppel) || ![401, 404, 503].includes(erreur.statut)) throw erreur;
+    origineFlux = "code (categories.ts)";
+    tousLesFlux = FLUX;
+  }
+  const invalides = tousLesFlux.filter((f) => !f.filtres.every((filtre) => FORMAT_FILTRE.test(filtre)));
+  for (const f of invalides) console.error(`Flux ${f.code} ignoré : expression invalide (${f.filtres.join(" ; ")}).`);
+  const flux = tousLesFlux.filter((f) => !invalides.includes(f) && (!seulement || seulement.includes(f.slug)));
   await mkdir(dossier, { recursive: true });
   const extraitDu = await dateExtrait();
-  console.log(`Extrait Geofabrik du ${extraitDu} — ${flux.length} flux${essai ? " (essai : rien ne sera publié)" : ""}.`);
+  console.log(`Extrait Geofabrik du ${extraitDu} — ${flux.length} flux (${origineFlux})${essai ? " (essai : rien ne sera publié)" : ""}.`);
   const extrait = await telechargerExtrait(dossier, valeur("extrait"));
   const parFlux = await extraireFlux(extrait, dossier, flux);
+
+  // 3. Inventaire des tags : signale ceux apparus depuis le passage précédent (sans jamais bloquer la publication).
+  let nouveauxTags: TagCompte[] = [];
+  let inventaire: string | undefined;
+  if (!api.lecturePublique && !seulement) {
+    try {
+      const cles = [...new Set([...CLES_INVENTAIRE, ...flux.flatMap((f) => f.filtres.map((filtre) => filtre.slice(4).split("=")[0]))])];
+      const tags = await inventaireTags(extrait, dossier, cles);
+      const comptes = flux.map((f) => ({ code: f.code, nb: parFlux.get(f.code)?.length ?? 0 }));
+      if (essai) {
+        const connus = new Set((await api.lireInventaire()).map((tag) => `${tag.cle}=${tag.valeur}`));
+        nouveauxTags = connus.size === 0 ? [] : tags.filter((tag) => !connus.has(`${tag.cle}=${tag.valeur}`));
+      } else {
+        nouveauxTags = await api.deposerInventaire(tags, comptes);
+      }
+      inventaire = `${tags.length} tags inventoriés, ${nouveauxTags.length} nouveau(x)`;
+      console.log(`Inventaire : ${inventaire}${nouveauxTags.length ? ` : ${nouveauxTags.slice(0, 20).map((tag) => `${tag.cle}=${tag.valeur} (${tag.nb})`).join(", ")}` : ""}.`);
+    } catch (erreur) {
+      inventaire = `inventaire impossible : ${erreur instanceof Error ? erreur.message : erreur}`;
+      console.error(inventaire);
+    }
+  }
 
   const parDonnee = new Map<string, Flux[]>();
   for (const f of flux) parDonnee.set(f.slug, [...(parDonnee.get(f.slug) ?? []), f]);
@@ -124,7 +165,7 @@ async function main() {
     donnees[slug] = rapport;
     try {
       const donnee: DonneeApi | null = await api.lireDonnee(slug);
-      const nouvelle = donnee ? null : champsNouvelleDonnee(slug);
+      const nouvelle = donnee ? null : champsNouvelleDonnee(slug, tousLesFlux);
       if (!donnee && !nouvelle) throw new Error("donnée introuvable (ni existante, ni dans NOUVELLES_DONNEES)");
       rapport.creee = !donnee;
       rapport.complement = Boolean(donnee && donnee.source_slug !== SOURCE);
@@ -148,6 +189,10 @@ async function main() {
         const extraits = parFlux.get(f.code) ?? [];
         const ancienTexte = donnee ? await api.lireFichier(slug, f.fichier, "geojson") : null;
         const precedents = lireObjets(ancienTexte);
+        if (extraits.length === 0 && precedents.length === 0) {
+          rapport.fichiers[f.fichier] = { extraits: 0, vide: true, change: false };
+          continue;
+        }
         if (baisseAnormale(precedents, extraits)) {
           rapport.anomalie = `${f.fichier} : ${extraits.length} objets extraits pour ${precedents.length} publiés (baisse de plus de 10 %)`;
           break;
@@ -198,10 +243,11 @@ async function main() {
   const resume = essai
     ? `Essai : ${aPublier} donnée(s) à publier, ${liste.length - aPublier - problemes} inchangée(s), ${problemes} problème(s).`
     : `${publiees} donnée(s) publiée(s), ${liste.length - publiees - problemes} inchangée(s), ${problemes} problème(s).`;
-  console.log(resume);
+  const resumeComplet = inventaire ? `${resume} ${inventaire[0].toUpperCase()}${inventaire.slice(1)}.` : resume;
+  console.log(resumeComplet);
   for (const [slug, r] of Object.entries(donnees)) {
     const fichiers = Object.entries(r.fichiers)
-      .map(([nom, f]) => `${nom} ${f.total ?? 0} (+${f.ajoutes ?? 0}/~${f.mis_a_jour ?? 0}/-${f.absents ?? 0}${f.geoalgeria !== undefined ? `, ${f.geoalgeria} chez GeoAlgeria` : ""})${f.change ? " *" : ""}`)
+      .map(([nom, f]) => f.vide ? `${nom} : aucun objet` : `${nom} ${f.total ?? 0} (+${f.ajoutes ?? 0}/~${f.mis_a_jour ?? 0}/-${f.absents ?? 0}${f.geoalgeria !== undefined ? `, ${f.geoalgeria} chez GeoAlgeria` : ""})${f.change ? " *" : ""}`)
       .join(", ");
     console.log(`  ${slug}${r.creee ? " [nouvelle]" : ""}${r.complement ? " [complément]" : ""} : ${fichiers}${r.version ? ` → ${r.version}` : ""}${r.anomalie ? ` ⚠ ${r.anomalie}` : ""}${r.erreur ? ` ✗ ${r.erreur}` : ""}`);
   }
@@ -209,15 +255,17 @@ async function main() {
     const lignes = Object.entries(donnees).map(
       ([slug, r]) =>
         `| ${slug} | ${Object.entries(r.fichiers)
-          .map(([nom, f]) => `${nom} : ${f.total ?? 0} (+${f.ajoutes ?? 0}, ~${f.mis_a_jour ?? 0}, −${f.absents ?? 0})`)
+          .map(([nom, f]) => (f.vide ? `${nom} : aucun objet trouvé` : `${nom} : ${f.total ?? 0} (+${f.ajoutes ?? 0}, ~${f.mis_a_jour ?? 0}, −${f.absents ?? 0})`))
           .join("<br>")} | ${r.publiee ? `✅ ${r.version}` : r.erreur ? `❌ ${r.erreur}` : r.anomalie ? `⚠️ ${r.anomalie}` : "—"} |`
     );
-    await appendFile(process.env.GITHUB_STEP_SUMMARY, `## Synchro OpenStreetMap\n\n${resume}\n\n| Donnée | Fichiers (+ajoutés, ~mis à jour, −absents) | Publication |\n|---|---|---|\n${lignes.join("\n")}\n`);
+    await appendFile(process.env.GITHUB_STEP_SUMMARY, `## Synchro OpenStreetMap\n\n${resumeComplet}\n\n${
+      nouveauxTags.length ? `Nouveaux tags (à classer dans /admin/sync) : ${nouveauxTags.map((tag) => `\`${tag.cle}=${tag.valeur}\` (${tag.nb})`).join(", ")}\n\n` : ""
+    }| Donnée | Fichiers (+ajoutés, ~mis à jour, −absents) | Publication |\n|---|---|---|\n${lignes.join("\n")}\n`);
   }
   if (!api.lecturePublique) {
     // Un rapport perdu (base pas à jour) ne doit pas faire échouer un passage qui a publié.
     await api
-      .rapporter(CODE, { statut, declencheur, debut: debut.toISOString(), fin: new Date().toISOString(), resume, rapport: { extrait_du: extraitDu, donnees } })
+      .rapporter(CODE, { statut, declencheur, debut: debut.toISOString(), fin: new Date().toISOString(), resume: resumeComplet, rapport: { extrait_du: extraitDu, origine_flux: origineFlux, nouveaux_tags: nouveauxTags, donnees } })
       .catch((erreur) => console.error(`Rapport non enregistré : ${erreur instanceof Error ? erreur.message : erreur}`));
   }
   if (statut === "echec") process.exitCode = 1;

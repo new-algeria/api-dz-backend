@@ -14,7 +14,12 @@ export type Statut = (typeof STATUTS)[number];
 
 /** Traduit les erreurs Postgres courantes en erreurs API lisibles. */
 export function erreurBase(erreur: PostgrestError): ErreurApi {
-  if (erreur.code === "23505") return new ErreurApi(409, "conflict", "Une donnée avec ce slug existe déjà.");
+  if (erreur.code === "23505") {
+    // Seule la contrainte du slug mérite ce message ; les autres (versions, fichiers) sont journalisées telles quelles.
+    if (/slug/i.test(erreur.message)) return new ErreurApi(409, "conflict", "Une donnée avec ce slug existe déjà.");
+    console.error("supabase:", erreur.code, erreur.message, erreur.details);
+    return new ErreurApi(409, "conflict", "Conflit avec un enregistrement existant.", erreur.message);
+  }
   if (erreur.code === "23503") return new ErreurApi(400, "unknown_reference", "Catégorie, licence ou source inconnue.", erreur.details);
   if (erreur.code === "23514" || erreur.code === "23502" || erreur.code === "22P02") {
     return new ErreurApi(400, "constraint_violation", "Valeur refusée par la base.", erreur.message);
@@ -403,7 +408,13 @@ export async function publierVersion(
     .from("datasets")
     .update({ version_courante_id: version.id, mis_a_jour_le: new Date().toISOString() })
     .eq("id", donnee.id);
-  if (erreurCourante) throw erreurBase(erreurCourante);
+  if (erreurCourante) {
+    // Version jamais devenue courante (ex. recopie des fichiers des autres sources refusée) : on la retire, sinon
+    // son numéro bloquerait le passage suivant. Les objets R2 restent : ils peuvent être partagés avec d'autres versions.
+    await supabaseAdmin().from("fichiers").delete().eq("version_id", version.id);
+    await supabaseAdmin().from("versions").delete().eq("id", version.id);
+    throw erreurBase(erreurCourante);
+  }
 
   return { numero, nb_lignes: principal.nbLignes, colonnes: principal.colonnes, fichiers: analyses.length };
 }

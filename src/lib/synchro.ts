@@ -39,7 +39,7 @@ export function etatSynchro(synchro: Pick<LigneSynchro, "mode" | "actif" | "inte
 }
 
 /** Tables absentes (migration non appliquée) : 503 lisible plutôt qu'une erreur de base. */
-function erreurSynchro(erreur: PostgrestError): ErreurApi {
+export function erreurSynchro(erreur: PostgrestError): ErreurApi {
   if (erreur.code === "PGRST205" || erreur.code === "42P01") {
     console.error("supabase:", erreur.code, erreur.message);
     return new ErreurApi(503, "schema_outdated", "La base n'est pas à jour : une migration Supabase reste à appliquer.");
