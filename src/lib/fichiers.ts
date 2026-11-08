@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { chargerFicheInterne, estRestreinte, lienPaquet, nomFichier, URL_SITE, type FichierInterne } from "./catalogue.js";
 import { convertir, lireTable, TYPES_CONTENU, type FormatSortie, type FormatSource, type Table } from "./conversion.js";
 import { ErreurApi, introuvable } from "./erreurs.js";
+import { FICHIER_FUSION, fusionnerSources, type TableSource } from "./fusion-sources.js";
 import { ecrireObjet, infosObjet, lienSigne, lireObjet } from "./r2.js";
 import { texteMultilingue } from "./textes.js";
 
@@ -17,7 +18,7 @@ const FORMATS_SOURCE: FormatSource[] = ["geojson", "json", "csv"];
 export const TAILLE_MAX_CONVERSION = 60 * 1024 * 1024;
 const TYPES_NATIFS: Record<string, string> = { ...TYPES_CONTENU, xml: "application/xml", zip: "application/zip", pdf: "application/pdf", ics: "text/calendar" };
 
-async function fichiersDe(slug: string, nom?: string) {
+async function ficheLisible(slug: string) {
   const resultat = await chargerFicheInterne(slug);
   if (!resultat) throw introuvable("Donnée");
   const { fiche, fichiers } = resultat;
@@ -31,6 +32,11 @@ async function fichiersDe(slug: string, nom?: string) {
       { lien_paquet: lien }
     );
   }
+  return { fiche, fichiers };
+}
+
+async function fichiersDe(slug: string, nom?: string) {
+  const { fiche, fichiers } = await ficheLisible(slug);
   const nomVise = nom ?? (fichiers.find((fichier) => fichier.principal) ?? fichiers[0]);
   const cible = typeof nomVise === "string" ? nomVise : nomVise ? nomFichier(nomVise) : undefined;
   const versions = fichiers.filter((fichier) => nomFichier(fichier) === cible);
@@ -70,6 +76,7 @@ function estFormatNatif(format: FormatSortie | FormatNatif): format is FormatNat
 }
 
 export async function lienTelechargement(slug: string, format: FormatSortie | FormatNatif, nom?: string, inline = false): Promise<string> {
+  if (nom === FICHIER_FUSION) return lienTelechargementFusion(slug, format, inline);
   const { fiche, nom: nomCible, versions } = await fichiersDe(slug, nom);
   const nomTelecharge = `${nomCible === slug ? slug : `${slug}-${nomCible}`}.${format}`;
   const options = { expiration: DUREE_LIEN, nomFichier: nomTelecharge, inline, typeContenu: TYPES_NATIFS[format] };
@@ -108,7 +115,11 @@ export async function lienTelechargement(slug: string, format: FormatSortie | Fo
 const cacheTables = new Map<string, { table: Table; lu: number }>();
 const TAILLE_CACHE = 4;
 
-export async function lireTableDonnee(slug: string, nom?: string) {
+export async function lireTableDonnee(slug: string, nom?: string): Promise<{ nom: string; table: Table; sources?: SourceFusion[] }> {
+  if (nom === FICHIER_FUSION) {
+    const fusion = await tableFusionnee(slug);
+    return { nom: FICHIER_FUSION, table: fusion.table, sources: fusion.sources };
+  }
   const { nom: nomCible, versions } = await fichiersDe(slug, nom);
   const source = sourcePourConversion(versions);
   if ((source.taille_octets ?? 0) > TAILLE_MAX_CONVERSION) {
@@ -126,4 +137,115 @@ export async function lireTableDonnee(slug: string, nom?: string) {
   }
   entree.lu = Date.now();
   return { nom: nomCible, table: entree.table };
+}
+
+// ---------------------------------------------------------------- Vue fusionnée de toutes les sources (`file=all`)
+
+export interface SourceFusion {
+  slug: string;
+  nom: string;
+  licence: string | null;
+  fichiers: string[];
+}
+
+/** Table lue (cache mémoire partagé avec /data), ou `null` si le fichier n'est pas un tableau d'enregistrements. */
+async function tableEnCache(source: FichierInterne & { format: FormatSource }): Promise<Table | null> {
+  const cle = empreinte(source);
+  let entree = cacheTables.get(cle);
+  if (!entree) {
+    try {
+      entree = { table: await lireSource(source), lu: Date.now() };
+    } catch (erreur) {
+      if (erreur instanceof ErreurApi && erreur.statut === 422) return null;
+      throw erreur;
+    }
+    cacheTables.set(cle, entree);
+    if (cacheTables.size > TAILLE_CACHE) {
+      const plusAncienne = [...cacheTables.entries()].sort((a, b) => a[1].lu - b[1].lu)[0][0];
+      cacheTables.delete(plusAncienne);
+    }
+  }
+  entree.lu = Date.now();
+  return entree.table;
+}
+
+const cacheFusions = new Map<string, { table: Table; sources: SourceFusion[]; lu: number }>();
+
+async function tableFusionnee(slug: string) {
+  const { fiche, fichiers } = await ficheLisible(slug);
+  const origine = fiche.sources as { slug?: string; nom?: string } | null;
+  const sourceDonnee = origine?.slug ?? null;
+  const groupes = new Map<string, FichierInterne[]>();
+  for (const fichier of fichiers) groupes.set(nomFichier(fichier), [...(groupes.get(nomFichier(fichier)) ?? []), fichier]);
+  const autreSource = (versions: FichierInterne[]) => Boolean(versions[0].sources?.slug && versions[0].sources.slug !== sourceDonnee);
+
+  // Seuls les fichiers qui peuvent entrer dans la fusion sont lus (voir fusion-sources.ts).
+  const entrees = [...groupes.entries()];
+  const avecAutres = entrees.some(([, versions]) => autreSource(versions));
+  const aLire = avecAutres || sourceDonnee === "openstreetmap" ? entrees : entrees.filter(([, versions]) => versions.some((v) => v.principal)).slice(0, 1);
+
+  const candidats: (TableSource & { fichier: FichierInterne & { format: FormatSource } })[] = [];
+  for (const [nom, versions] of aLire) {
+    const convertible = versions.find((version) => FORMATS_SOURCE.includes(version.format as FormatSource));
+    if (!convertible) continue;
+    const source = sourcePourConversion(versions);
+    if ((source.taille_octets ?? 0) > TAILLE_MAX_CONVERSION) {
+      throw new ErreurApi(413, "too_large", `Fichier ${nom} trop volumineux pour la vue fusionnée : téléchargez chaque fichier séparément.`);
+    }
+    const table = await tableEnCache(source);
+    if (!table) continue;
+    candidats.push({
+      nom,
+      principal: versions.some((version) => version.principal),
+      source: versions[0].sources?.slug ?? sourceDonnee ?? "inconnue",
+      autreSource: autreSource(versions),
+      table,
+      fichier: source,
+    });
+  }
+  if (candidats.length === 0) throw new ErreurApi(422, "not_tabular", "Aucun fichier de cette donnée n'est un tableau d'enregistrements.");
+
+  const cle = createHash("sha256").update(candidats.map((c) => `${c.nom}:${empreinte(c.fichier)}`).sort().join("|")).digest("hex").slice(0, 20);
+  const enCache = cacheFusions.get(cle);
+  if (enCache) {
+    enCache.lu = Date.now();
+    return { cle, table: enCache.table, sources: enCache.sources, fiche };
+  }
+
+  const fusion = fusionnerSources(candidats, sourceDonnee);
+  const sources: SourceFusion[] = fusion.sources.map((slugSource) => {
+    const retenus = candidats.filter((c) => c.source === slugSource && fusion.fichiers.includes(c.nom));
+    const premier = retenus[0]?.fichier;
+    const licence = premier?.licence_code ?? (fiche.licence_code as string | null | undefined) ?? null;
+    return {
+      slug: slugSource,
+      nom: premier?.sources?.nom ?? (slugSource === sourceDonnee ? (origine?.nom ?? slugSource) : slugSource),
+      licence: slugSource === "openstreetmap" ? `${licence ?? "ODbL-1.0"} (© contributeurs OpenStreetMap)` : licence,
+      fichiers: retenus.map((c) => c.nom),
+    };
+  });
+  const table: Table = { lignes: fusion.lignes, geometries: fusion.geometries };
+  cacheFusions.set(cle, { table, sources, lu: Date.now() });
+  if (cacheFusions.size > TAILLE_CACHE) {
+    const plusAncienne = [...cacheFusions.entries()].sort((a, b) => a[1].lu - b[1].lu)[0][0];
+    cacheFusions.delete(plusAncienne);
+  }
+  return { cle, table, sources, fiche };
+}
+
+async function lienTelechargementFusion(slug: string, format: FormatSortie | FormatNatif, inline: boolean): Promise<string> {
+  if (estFormatNatif(format)) throw new ErreurApi(422, "not_convertible", "La vue fusionnée existe en CSV, XLSX, JSON et GeoJSON.");
+  const { cle, table, sources, fiche } = await tableFusionnee(slug);
+  const metadonnees = {
+    titre: texteMultilingue(fiche.titre),
+    source: sources.map((source) => source.nom).join(" + "),
+    licence: sources.map((source) => `${source.nom} : ${source.licence ?? "voir la fiche"}`).join(" ; "),
+    urlFiche: `${URL_SITE}/datasets/${slug}`,
+  };
+  const version = createHash("sha256").update(`${cle}:${JSON.stringify(metadonnees)}`).digest("hex").slice(0, 20);
+  const cleExport = `exports/${slug}/${version}/${FICHIER_FUSION}.${format}`;
+  if (!(await infosObjet(cleExport))) {
+    await ecrireObjet(cleExport, convertir(table, format, metadonnees), TYPES_CONTENU[format], "private, max-age=31536000, immutable");
+  }
+  return lienSigne(cleExport, { expiration: DUREE_LIEN, nomFichier: `${slug}-${FICHIER_FUSION}.${format}`, inline, typeContenu: TYPES_NATIFS[format] });
 }

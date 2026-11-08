@@ -13,7 +13,7 @@ export const ParamsSlug = z.object({ slug: Slug });
 export const NomFichier = z
   .string()
   .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/)
-  .openapi({ example: "postoffices", description: "Nom du fichier (voir `ressources[].nom`). Par défaut : le fichier principal." });
+  .openapi({ example: "postoffices", description: "Nom du fichier (voir `ressources[].nom`), ou `all` pour toutes les sources fusionnées sans doublon. Par défaut : le fichier principal." });
 
 const Multilingue = z
   .object({ fr: z.string().optional(), en: z.string().optional(), ar: z.string().optional() })

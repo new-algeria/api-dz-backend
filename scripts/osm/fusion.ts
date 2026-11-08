@@ -3,7 +3,8 @@
 // `@geometry: "center"`), déjà utilisé par les données OpenStreetMap du site, plus nos propriétés :
 //   osm_ajoute_le      : date du premier passage où l'objet a été vu ;
 //   osm_absent_depuis  : date du passage où il a disparu d'OpenStreetMap (jamais supprimé, à trancher par un admin) ;
-//   geoalgeria_id      : objet GeoAlgeria correspondant (même identifiant OSM, ou proche avec un nom proche).
+//   geoalgeria_id      : objet GeoAlgeria correspondant (même identifiant, ou nom proche à côté / dans la même commune) ;
+//   wilaya_code, commune_code, commune : lieu déduit de la position (frontières OSM des communes, codes GeoAlgeria).
 // Aucune date de passage n'est écrite sur un objet inchangé : un fichier identique garde la même empreinte,
 // et rien n'est republié.
 
@@ -134,7 +135,8 @@ export interface RapportFusion {
   total: number;
 }
 
-const NOS_PROPRIETES = ["osm_ajoute_le", "osm_absent_depuis", "geoalgeria_id"] as const;
+// Ajoutées par data-dz (jamais lues comme des étiquettes OSM) ; codes : scripts/osm/localisation.ts.
+const NOS_PROPRIETES = ["osm_ajoute_le", "osm_absent_depuis", "geoalgeria_id", "wilaya_code", "commune_code", "commune"] as const;
 
 function sansNosProprietes(proprietes: Record<string, unknown>) {
   const copie = { ...proprietes };
@@ -143,7 +145,7 @@ function sansNosProprietes(proprietes: Record<string, unknown>) {
 }
 
 /** Propriétés triées (`@id` en premier, `@geometry` en dernier) : même contenu = même texte = même empreinte. */
-function trierProprietes(proprietes: Record<string, unknown>): Objet["properties"] {
+export function trierProprietes(proprietes: Record<string, unknown>): Objet["properties"] {
   const cles = Object.keys(proprietes).sort((a, b) => {
     const rang = (cle: string) => (cle === "@id" ? 0 : cle === "@geometry" ? 2 : 1);
     return rang(a) - rang(b) || a.localeCompare(b);
@@ -188,7 +190,9 @@ export function fusionner(precedents: Objet[], extraits: Objet[], date: string):
     if (etaitAbsent) rapport.revenus++;
     const garde: Record<string, unknown> = {};
     if (ancien.properties.osm_ajoute_le !== undefined) garde.osm_ajoute_le = ancien.properties.osm_ajoute_le;
-    if (ancien.properties.geoalgeria_id !== undefined) garde.geoalgeria_id = ancien.properties.geoalgeria_id;
+    for (const cle of ["geoalgeria_id", "wilaya_code", "commune_code", "commune"] as const) {
+      if (ancien.properties[cle] !== undefined) garde[cle] = ancien.properties[cle];
+    }
     const objet: Objet = { ...extrait, properties: trierProprietes({ ...extrait.properties, ...garde }) };
     if (!etaitAbsent && memesDonnees(objet, ancien)) {
       rapport.inchanges++;
@@ -258,33 +262,67 @@ interface ObjetGeoAlgeria {
   properties?: Record<string, unknown> | null;
 }
 
+/** Identifiants partagés par les deux sources, préfixés par leur nature (`osm:`, `wikidata:`, `icao:`, `iata:`). */
+function identifiantsGeoAlgeria(proprietes: Record<string, unknown>): string[] {
+  const refs = (proprietes.refs ?? {}) as Record<string, unknown>;
+  const ids: string[] = [];
+  const ajouter = (nature: string, valeur: unknown) => {
+    if (typeof valeur === "string" && valeur.trim()) ids.push(`${nature}:${valeur.trim().toUpperCase()}`);
+  };
+  ajouter("osm", refs.osm);
+  for (const nature of ["wikidata", "icao", "iata"]) {
+    ajouter(nature, refs[nature]);
+    ajouter(nature, proprietes[nature]);
+  }
+  return ids;
+}
+
+function identifiantsOsm(proprietes: Record<string, unknown>): string[] {
+  const ids = [`osm:${String(proprietes["@id"]).toUpperCase()}`];
+  for (const nature of ["wikidata", "icao", "iata"]) {
+    const valeur = proprietes[nature];
+    if (typeof valeur === "string" && valeur.trim()) ids.push(`${nature}:${valeur.trim().toUpperCase()}`);
+  }
+  return ids;
+}
+
+/** Position GeoAlgeria approximative (centre de la commune) : la distance ne veut rien dire, seule la commune compte. */
+const estApproximatif = (proprietes: Record<string, unknown>) =>
+  proprietes.geo_precision === "approximate" || proprietes.geo_method === "commune_centroid";
+
 /**
- * Note sur chaque objet OSM l'objet GeoAlgeria correspondant (`geoalgeria_id`) : même identifiant OSM
- * (`refs.osm` de GeoAlgeria), sinon à moins de `rayonM` mètres avec un nom proche (similarité ≥ 0,8).
+ * Note sur chaque objet OSM l'objet GeoAlgeria correspondant (`geoalgeria_id`), dans cet ordre :
+ * 1. même identifiant : OSM (`refs.osm`), Wikidata, code OACI / IATA (aéroports) ;
+ * 2. nom proche (similarité ≥ 0,8) et à moins de `rayonM` mètres d'un point GeoAlgeria précis ;
+ * 3. nom proche dans la même commune (`commune_code`) d'un point GeoAlgeria approximatif (centre de commune).
  * Renvoie le nombre d'objets rapprochés.
  */
 export function rapprocher(objets: Objet[], geoalgeria: ObjetGeoAlgeria[], rayonM: number): number {
-  const parIdOsm = new Map<string, string>();
-  const points: { id: string; point: [number, number]; noms: string[] }[] = [];
+  const parIdentifiant = new Map<string, string>();
+  const points: { id: string; point: [number, number]; noms: string[]; approximatif: boolean; commune: string | null }[] = [];
   for (const objet of geoalgeria) {
     const proprietes = objet.properties ?? {};
     const id = proprietes.id ?? objet.id;
     if (typeof id !== "string" && typeof id !== "number") continue;
-    const refs = proprietes.refs as Record<string, unknown> | undefined;
-    if (typeof refs?.osm === "string") parIdOsm.set(refs.osm, String(id));
+    for (const identifiant of identifiantsGeoAlgeria(proprietes)) if (!parIdentifiant.has(identifiant)) parIdentifiant.set(identifiant, String(id));
     const point = objet.geometry ? centre(objet.geometry) : null;
-    if (point) points.push({ id: String(id), point, noms: nomsDe(proprietes) });
+    const commune = typeof proprietes.commune_code === "string" && proprietes.commune_code ? proprietes.commune_code : null;
+    if (point) points.push({ id: String(id), point, noms: nomsDe(proprietes), approximatif: estApproximatif(proprietes), commune });
   }
 
   let rapproches = 0;
   for (const objet of objets) {
-    let trouve = parIdOsm.get(objet.properties["@id"]);
+    let trouve = identifiantsOsm(objet.properties).map((identifiant) => parIdentifiant.get(identifiant)).find(Boolean);
     if (!trouve) {
       const noms = nomsDe(objet.properties);
+      const commune = typeof objet.properties.commune_code === "string" ? objet.properties.commune_code : null;
       let meilleur = 0;
       for (const candidat of points) {
         if (noms.length === 0 || candidat.noms.length === 0) continue;
-        if (distanceM(objet.geometry.coordinates, candidat.point) > rayonM) continue;
+        const voisin = candidat.approximatif
+          ? commune !== null && candidat.commune === commune
+          : distanceM(objet.geometry.coordinates, candidat.point) <= rayonM;
+        if (!voisin) continue;
         const score = Math.max(...noms.flatMap((nom) => candidat.noms.map((autre) => similarite(nom, autre))));
         if (score >= 0.8 && score > meilleur) {
           meilleur = score;
@@ -301,6 +339,14 @@ export function rapprocher(objets: Objet[], geoalgeria: ObjetGeoAlgeria[], rayon
     }
   }
   return rapproches;
+}
+
+/**
+ * Fichier GeoAlgeria de référence d'une donnée : celui qui a le plus de points (ex. `airports` plutôt que `routes`,
+ * des lignes, pour « aviation »), le principal à égalité. Même règle dans l'API pour `file=all`.
+ */
+export function fichierReference<T extends { principal: boolean; nbPoints: number }>(fichiers: T[]): T | null {
+  return [...fichiers].filter((fichier) => fichier.nbPoints > 0).sort((a, b) => b.nbPoints - a.nbPoints || Number(b.principal) - Number(a.principal))[0] ?? null;
 }
 
 // ---------------------------------------------------------------- Contrôles avant publication

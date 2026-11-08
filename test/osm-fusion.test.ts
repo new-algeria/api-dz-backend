@@ -4,6 +4,7 @@ import {
   appartientAuFlux,
   baisseAnormale,
   centre,
+  fichierReference,
   fusionner,
   idDepuisOsmium,
   idObjet,
@@ -127,6 +128,32 @@ describe("rapprochement GeoAlgeria", () => {
     ];
     expect(rapprocher(objets, geoalgeria, 300)).toBe(2);
     expect(objets.map((o) => o.properties.geoalgeria_id)).toEqual(["16-001", "16-eph-02", undefined]);
+  });
+
+  it("par code OACI / IATA ou Wikidata (aéroports), et dans la même commune quand GeoAlgeria est approximatif", () => {
+    const objets = [
+      objet("way/10", { name: "Houari Boumediene Airport", icao: "daag" }, [3.21, 36.69]),
+      objet("node/11", { name: "Clinique El Nour", commune_code: "1601" }, [3.08, 36.77]),
+      objet("node/12", { name: "Clinique El Nour", commune_code: "1602" }, [3.2, 36.7]),
+      objet("node/13", { name: "Musée", wikidata: "Q42" }, [0, 30]),
+    ];
+    const geoalgeria = [
+      { properties: { id: "daag", name: "Aéroport d'Alger", refs: { icao: "DAAG" } }, geometry: { type: "Point", coordinates: [3.2, 36.7] } },
+      { properties: { id: "16-cl-1", name: "Clinique El Nour", commune_code: "1601", geo_precision: "approximate" }, geometry: { type: "Point", coordinates: [3.0, 36.7] } },
+      { properties: { id: "m-1", name: "Autre", refs: { wikidata: "Q42" } }, geometry: { type: "Point", coordinates: [5, 35] } },
+    ];
+    expect(rapprocher(objets, geoalgeria, 300)).toBe(3);
+    expect(objets.map((o) => o.properties.geoalgeria_id)).toEqual(["daag", "16-cl-1", undefined, "m-1"]);
+  });
+
+  it("choisit le fichier GeoAlgeria qui a le plus de points", () => {
+    const fichiers = [
+      { nom: "routes", principal: true, nbPoints: 0 },
+      { nom: "airports", principal: false, nbPoints: 36 },
+    ];
+    expect(fichierReference(fichiers)?.nom).toBe("airports");
+    expect(fichierReference([{ nom: "a", principal: false, nbPoints: 5 }, { nom: "b", principal: true, nbPoints: 5 }])?.nom).toBe("b");
+    expect(fichierReference([{ nom: "routes", principal: true, nbPoints: 0 }])).toBeNull();
   });
 
   it("compare les noms sans accents ni mots génériques", () => {

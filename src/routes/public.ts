@@ -122,7 +122,10 @@ routesPubliques.openapi(
     summary: "Lignes d'un fichier (JSON paginé)",
     description:
       "Lit le fichier (principal par défaut) et renvoie ses enregistrements. Les points deviennent `longitude` / `latitude` ; " +
-      "les autres géométries ne sont incluses qu'avec `geometry=wkt`. Pour le fichier complet, utilisez `/download`.",
+      "les autres géométries ne sont incluses qu'avec `geometry=wkt`. Pour le fichier complet, utilisez `/download`.\n\n" +
+      "`file=all` : toutes les sources de la donnée en une table, sans doublon (ex. GeoAlgeria + OpenStreetMap). Chaque ligne porte " +
+      "`provider` (source) et `provider_file` (fichier d'origine) ; un objet OpenStreetMap déjà connu de GeoAlgeria n'est pas répété, " +
+      "l'objet GeoAlgeria reçoit son `osm_id`. `sources` donne la licence de chaque source (citez-les toutes).",
     request: {
       params: ParamsSlug,
       query: z.object({
@@ -145,6 +148,10 @@ routesPubliques.openapi(
           colonnes: z.array(z.string()),
           data: z.array(Ligne),
           pagination: z.object({ offset: z.number(), limit: z.number(), total: z.number() }),
+          sources: z
+            .array(z.object({ slug: z.string(), nom: z.string(), licence: z.string().nullable(), fichiers: z.array(z.string()) }))
+            .optional()
+            .openapi({ description: "Avec `file=all` : sources fusionnées, leur licence et leurs fichiers." }),
         }),
         "Enregistrements"
       ),
@@ -154,7 +161,7 @@ routesPubliques.openapi(
   async (c) => {
     const { slug } = c.req.valid("param");
     const { file, offset, limit, fields, wilaya, geometry } = c.req.valid("query");
-    const { nom, table } = await lireTableDonnee(slug, file);
+    const { nom, table, sources } = await lireTableDonnee(slug, file);
 
     let lignes = geometry === "wkt" ? lignesAPlat(table) : lignesAPlat({ ...table, geometries: table.geometries?.map((g) => (g?.type === "Point" ? g : null)) ?? null });
     if (wilaya) lignes = lignes.filter((ligne) => String(ligne.wilaya_code ?? "").padStart(2, "0") === wilaya);
@@ -163,7 +170,7 @@ routesPubliques.openapi(
     const champs = fields?.split(",");
     if (champs) page = page.map((ligne) => Object.fromEntries(champs.filter((champ) => champ in ligne).map((champ) => [champ, ligne[champ]])));
 
-    const corps = { fichier: nom, colonnes: champs ?? colonnesDe(lignes.slice(0, 1000)), data: page, pagination: { offset, limit, total } };
+    const corps = { fichier: nom, colonnes: champs ?? colonnesDe(lignes.slice(0, 1000)), data: page, pagination: { offset, limit, total }, ...(sources ? { sources } : {}) };
     if (Buffer.byteLength(JSON.stringify(corps)) > TAILLE_MAX_REPONSE) {
       throw new ErreurApi(413, "response_too_large", "Réponse trop volumineuse : réduisez `limit`, choisissez des `fields` ou utilisez `/download`.");
     }
@@ -214,7 +221,8 @@ routesPubliques.openapi(
     summary: "Télécharger un fichier natif ou un export CSV, XLSX, JSON, GeoJSON",
     description:
       "Redirige (302) vers un lien signé valable 10 minutes. Les conversions sont faites une seule fois par version du fichier. " +
-      "Partagez toujours cette URL, jamais le lien signé (il expire).",
+      "Partagez toujours cette URL, jamais le lien signé (il expire). `file=all` : toutes les sources fusionnées sans doublon " +
+      "(CSV, XLSX, JSON, GeoJSON ; voir `/data`).",
     request: {
       params: ParamsSlug,
       query: z.object({

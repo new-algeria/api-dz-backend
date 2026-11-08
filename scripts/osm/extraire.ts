@@ -8,7 +8,7 @@ import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { Flux } from "./categories.js";
-import { appartientAuFlux, versObjet, type Objet } from "./fusion.js";
+import { appartientAuFlux, idDepuisOsmium, versObjet, type Objet } from "./fusion.js";
 
 export const URL_EXTRAIT = "https://download.geofabrik.de/africa/algeria-latest.osm.pbf";
 const AGENT = "data-dz-synchro/1.0 (+https://www.data-dz.com)";
@@ -64,6 +64,27 @@ export async function extraireFlux(extrait: string, dossier: string, flux: Flux[
     for (const cible of cibles) parFlux.get(cible.code)!.push(objet);
   }
   return parFlux;
+}
+
+/**
+ * Frontières des communes (relations `boundary=administrative`, `admin_level=8`) en polygones, depuis le même
+ * extrait : `{ id: "relation/<id>", geometry }`. Quelques secondes et ~50 Mo de GeoJSON pour toute l'Algérie.
+ */
+export async function extraireCommunes(extrait: string, dossier: string): Promise<{ id: string; geometry: { type: string; coordinates: unknown } }[]> {
+  const filtre = join(dossier, "limites.osm.pbf");
+  const export_ = join(dossier, "limites.geojsonseq");
+  await lancer("osmium", ["tags-filter", "--overwrite", "-o", filtre, extrait, "r/boundary=administrative"]);
+  await lancer("osmium", ["export", "--overwrite", "-f", "geojsonseq", "-x", "print_record_separator=false", "--add-unique-id=type_id", "--geometry-types=polygon", "-o", export_, filtre]);
+  const communes = [];
+  const lignes = createInterface({ input: createReadStream(export_, "utf8"), crlfDelay: Infinity });
+  for await (const ligne of lignes) {
+    if (!ligne.trim()) continue;
+    const brut = JSON.parse(ligne.replace(/^\u001e/, "")) as { id?: string; geometry?: { type: string; coordinates: unknown }; properties?: Record<string, unknown> };
+    if (brut.properties?.admin_level !== "8" || !brut.geometry || typeof brut.id !== "string") continue;
+    const id = idDepuisOsmium(brut.id);
+    if (id?.startsWith("relation/")) communes.push({ id, geometry: brut.geometry });
+  }
+  return communes;
 }
 
 /** Clés inventoriées à chaque passage (en plus de celles des flux) : équipements et lieux, pas la géométrie. */
