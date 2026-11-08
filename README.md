@@ -46,6 +46,14 @@ Les fiches et le catalogue exposent `nb_vues` et `nb_telechargements`. Le site e
 
 Les réponses servies par le CDN ne comptent pas dans les limites. Les erreurs suivent la RFC 9457 (`application/problem+json`, avec `code` et `requestId`).
 
+### Toutes les sources d'une donnée (`file=all`)
+
+`/data`, `/sample` et `/download` acceptent `file=all` : les fichiers de toutes les sources de la donnée en une table, sans doublon (`src/lib/fusion-sources.ts`, testé dans `test/fusion-sources.test.ts`).
+- Donnée GeoAlgeria complétée par OpenStreetMap : fichier GeoAlgeria de référence (le plus de points, le principal à égalité) + fichiers OSM. Un objet OSM rapproché (`geoalgeria_id`) n'est pas répété ; l'objet GeoAlgeria reçoit son `osm_id`.
+- Donnée OpenStreetMap : tous ses fichiers (un par tag), chaque objet une fois. Autre donnée d'une seule source : son fichier principal.
+- Chaque ligne porte `provider`, `provider_file`, `latitude` / `longitude` ; `/data` renvoie `sources` (licence de chaque source, à citer toutes : la part OSM est sous ODbL).
+- Le filtre `wilaya=` marche sur les deux sources : le robot écrit `wilaya_code` / `commune_code` sur les objets OSM.
+
 ### DjazAI
 
 Les routes DjazAI nécessitent `Authorization: Bearer <jeton de session Supabase>`. `GET /v1/assistant/quota` renvoie le quota actuel. `POST /v1/assistant/query` accepte une question et jusqu'à 8 messages récents; la réponse contient `answer_markdown`, `sources[]` et `quota`. Les sources citées ajoutent `image_url` (aperçu visuel du dataset, sauf diffusion restreinte) et `formats` pour les afficher directement dans le chat.
@@ -107,7 +115,8 @@ GitHub Action `.github/workflows/osm-sync.yml`, chaque jour à 5 h 17 UTC, mais 
 1. Un seul téléchargement de l'extrait Geofabrik de l'Algérie (~300 Mo, mis à jour chaque nuit) : **aucun appel à Overpass**, aucune limite d'API publique.
 2. `osmium tags-filter` puis `osmium export` (une passe, ~2 s) ; chaque objet est rangé dans les **flux réglés sur `/admin/sync`** (table `osm_flux` : étiquettes, conditions, donnée et fichier cibles, rayon de rapprochement). `scripts/osm/categories.ts` ne sert plus que de secours (base pas à jour, lecture publique) et de modèle des 11 nouvelles données (`NOUVELLES_DONNEES`). Un flux qui ne trouve rien et n'a rien publié est ignoré (« aucun objet trouvé » dans le rapport) ; une expression invalide est écartée sans bloquer les autres.
    Inventaire : `osmium tags-count` (≥ 30 objets) sur les clés d'équipements (`CLES_INVENTAIRE`) et celles des flux, déposé dans `osm_tags` ; les tags apparus depuis le passage précédent sont « nouveaux » sur `/admin/sync` et listés dans le rapport. Inventaire de départ : `scripts/osm/tags-algerie.md`.
-3. Fusion avec le fichier déjà publié (`scripts/osm/fusion.ts`, testé dans `test/osm-fusion.test.ts`) : on ajoute, on met à jour, **on ne supprime jamais** (`osm_ajoute_le`, `osm_absent_depuis`). Format overpass-turbo (`@id`, étiquettes, point au centre). Dans une donnée d'une autre source (GeoAlgeria), le fichier OSM est un complément (`hospitals-osm`…) et chaque objet porte `geoalgeria_id` quand il correspond à un objet GeoAlgeria (même identifiant OSM, ou proche avec un nom proche).
+3. Fusion avec le fichier déjà publié (`scripts/osm/fusion.ts`, testé dans `test/osm-fusion.test.ts`) : on ajoute, on met à jour, **on ne supprime jamais** (`osm_ajoute_le`, `osm_absent_depuis`). Format overpass-turbo (`@id`, étiquettes, point au centre). Dans une donnée d'une autre source (GeoAlgeria), le fichier OSM est un complément (`hospitals-osm`…) et chaque objet porte `geoalgeria_id` quand il correspond à un objet GeoAlgeria du fichier de référence (celui qui a le plus de points : `airports` et non `routes` pour « aviation ») : même identifiant (OSM, Wikidata, OACI / IATA), sinon nom proche à moins du rayon d'un point précis, ou dans la même commune d'un point GeoAlgeria approximatif (centre de commune).
+   Chaque objet reçoit aussi `wilaya_code`, `commune_code` et `commune` (`scripts/osm/localisation.ts`) : position testée dans les frontières OSM des communes (`boundary=administrative`, `admin_level=8`, même extrait, ~4 s), codes officiels lus dans le fichier `algeria` de la donnée GeoAlgeria `divisions-administratives` (`osm_relation_id` de chaque commune, 69 wilayas). Sans ce fichier, les codes du passage précédent sont gardés.
 4. Contrôles : objets hors d'Algérie écartés, baisse de plus de 10 % des objets d'un fichier → donnée non publiée (anomalie dans le rapport).
 5. Publication seulement si le fichier a changé (empreinte stable : aucune date de passage sur un objet inchangé), via `/uploads` puis `/versions` (`source_slug: openstreetmap`, numéro `x.y.AAAAMMJJ` pour un complément). Nouvelles données créées publiées par `PUT`.
 6. Rapport : console, résumé de l'Action, `POST /v1/admin/sync/openstreetmap/runs` (lu par `/admin/sync`).

@@ -96,13 +96,21 @@ export class ClientApi {
           slug: string;
           source?: { slug: string } | null;
           version?: { numero?: string } | null;
-          ressources: { nom: string; principal: boolean; fichiers: { format: string }[] }[];
+          ressources: { nom: string; principal: boolean; source?: { slug: string } | null; fichiers: { format: string }[] }[];
         }>(`/v1/datasets/${slug}`);
         return {
           slug: fiche.slug,
           source_slug: fiche.source?.slug ?? null,
           numero: fiche.version?.numero ?? null,
-          fichiers: fiche.ressources.flatMap((r) => r.fichiers.map((f) => ({ nom: r.nom, format: f.format, principal: r.principal }))),
+          fichiers: fiche.ressources.flatMap((r) =>
+            r.fichiers.map((f) => ({
+              nom: r.nom,
+              format: f.format,
+              principal: r.principal,
+              // Comme en admin : `sources` seulement pour un fichier d'une autre source que la donnée.
+              sources: r.source?.slug && r.source.slug !== fiche.source?.slug ? { slug: r.source.slug } : null,
+            }))
+          ),
         };
       }
       const donnee = await this.appel<{

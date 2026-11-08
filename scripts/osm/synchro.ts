@@ -12,8 +12,9 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { FORMAT_FILTRE } from "../../src/lib/osm-format.js";
 import { ClientApi, ErreurAppel, type DonneeApi, type TagCompte } from "./api.js";
 import { FLUX, NOUVELLES_DONNEES, type Flux } from "./categories.js";
-import { CLES_INVENTAIRE, dateExtrait, extraireFlux, inventaireTags, telechargerExtrait } from "./extraire.js";
-import { baisseAnormale, fusionner, numeroComplement, rapprocher, serialiser, type Objet, type RapportFusion } from "./fusion.js";
+import { CLES_INVENTAIRE, dateExtrait, extraireCommunes, extraireFlux, inventaireTags, telechargerExtrait } from "./extraire.js";
+import { baisseAnormale, fichierReference, fusionner, numeroComplement, rapprocher, serialiser, type Objet, type RapportFusion } from "./fusion.js";
+import { construireIndex, correspondancesGeoAlgeria, localiserObjets, type IndexLieux } from "./localisation.js";
 
 const CODE = "openstreetmap";
 const SOURCE = "openstreetmap";
@@ -35,6 +36,8 @@ interface RapportFichier extends Partial<RapportFusion> {
   /** Aucun objet trouvé et rien de publié avant : fichier ignoré (tag mal écrit, ou absent d'Algérie). */
   vide?: boolean;
   geoalgeria?: number;
+  /** Objets placés dans une commune (wilaya_code, commune_code). */
+  localises?: number;
   change: boolean;
 }
 
@@ -134,6 +137,19 @@ async function main() {
   const extrait = await telechargerExtrait(dossier, valeur("extrait"));
   const parFlux = await extraireFlux(extrait, dossier, flux);
 
+  // Wilaya et commune de chaque objet : frontières OSM des communes + codes de GeoAlgeria (divisions-administratives).
+  // Sans elles, les objets gardent les codes du passage précédent ; la publication n'est jamais bloquée.
+  let lieux: IndexLieux | null = null;
+  try {
+    const texte = await api.lireFichier("divisions-administratives", "algeria", "json");
+    const correspondances = correspondancesGeoAlgeria(texte ? JSON.parse(texte) : null);
+    if (correspondances.size === 0) throw new Error("fichier « algeria » de divisions-administratives introuvable ou vide");
+    lieux = construireIndex(await extraireCommunes(extrait, dossier), correspondances);
+    console.log(`Communes : ${lieux.nbZones} frontières reconnues sur ${correspondances.size} communes GeoAlgeria.`);
+  } catch (erreur) {
+    console.error(`Wilaya et commune non calculées : ${erreur instanceof Error ? erreur.message : erreur}`);
+  }
+
   // 3. Inventaire des tags : signale ceux apparus depuis le passage précédent (sans jamais bloquer la publication).
   let nouveauxTags: TagCompte[] = [];
   let inventaire: string | undefined;
@@ -177,11 +193,15 @@ async function main() {
         if (inconnus.length > 0) throw new Error(`fichiers hors synchronisation dans la donnée (${inconnus.join(", ")}) : publication manuelle`);
       }
 
-      // Fichier principal GeoAlgeria (rapprochement), lu une fois par donnée.
+      // Fichier GeoAlgeria de référence (rapprochement) : celui qui a le plus de points, lu une fois par donnée.
       let geoalgeria: Objet[] | null = null;
       if (rapport.complement && donnee) {
-        const principal = donnee.fichiers.find((f) => f.principal && f.format === "geojson" && !f.sources);
-        geoalgeria = principal?.nom ? lireObjets(await api.lireFichier(slug, principal.nom, "geojson")) : [];
+        const candidats = [];
+        for (const fichier of donnee.fichiers.filter((f) => f.format === "geojson" && !f.sources && f.nom)) {
+          const objets = lireObjets(await api.lireFichier(slug, fichier.nom!, "geojson"));
+          candidats.push({ principal: fichier.principal, nbPoints: objets.length, objets });
+        }
+        geoalgeria = fichierReference(candidats)?.objets ?? [];
       }
 
       const textes: { flux: Flux; texte: string }[] = [];
@@ -198,11 +218,12 @@ async function main() {
           break;
         }
         const { objets, rapport: fusion } = fusionner(precedents, extraits, date);
+        const localises = lieux ? localiserObjets(objets, lieux) : undefined;
         const rapproches = geoalgeria ? rapprocher(objets, geoalgeria, f.rayon_m ?? RAYON_PAR_DEFAUT_M) : undefined;
         const texte = serialiser(objets);
         const ancienSha = donnee?.fichiers.find((fichier) => fichier.nom === f.fichier && fichier.format === "geojson")?.sha256 ?? (ancienTexte ? sha256(ancienTexte) : null);
         const change = sha256(texte) !== ancienSha;
-        rapport.fichiers[f.fichier] = { extraits: extraits.length, ...fusion, ...(rapproches !== undefined ? { geoalgeria: rapproches } : {}), change };
+        rapport.fichiers[f.fichier] = { extraits: extraits.length, ...fusion, ...(rapproches !== undefined ? { geoalgeria: rapproches } : {}), ...(localises !== undefined ? { localises } : {}), change };
         textes.push({ flux: f, texte });
       }
       if (rapport.anomalie || !textes.some(({ flux: f }) => rapport.fichiers[f.fichier].change)) continue;
@@ -247,7 +268,7 @@ async function main() {
   console.log(resumeComplet);
   for (const [slug, r] of Object.entries(donnees)) {
     const fichiers = Object.entries(r.fichiers)
-      .map(([nom, f]) => f.vide ? `${nom} : aucun objet` : `${nom} ${f.total ?? 0} (+${f.ajoutes ?? 0}/~${f.mis_a_jour ?? 0}/-${f.absents ?? 0}${f.geoalgeria !== undefined ? `, ${f.geoalgeria} chez GeoAlgeria` : ""})${f.change ? " *" : ""}`)
+      .map(([nom, f]) => f.vide ? `${nom} : aucun objet` : `${nom} ${f.total ?? 0} (+${f.ajoutes ?? 0}/~${f.mis_a_jour ?? 0}/-${f.absents ?? 0}${f.geoalgeria !== undefined ? `, ${f.geoalgeria} chez GeoAlgeria` : ""}${f.localises !== undefined ? `, ${f.localises} localisés` : ""})${f.change ? " *" : ""}`)
       .join(", ");
     console.log(`  ${slug}${r.creee ? " [nouvelle]" : ""}${r.complement ? " [complément]" : ""} : ${fichiers}${r.version ? ` → ${r.version}` : ""}${r.anomalie ? ` ⚠ ${r.anomalie}` : ""}${r.erreur ? ` ✗ ${r.erreur}` : ""}`);
   }
