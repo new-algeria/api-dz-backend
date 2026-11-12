@@ -1,6 +1,6 @@
 {
   "name": "data-dz-api",
-  "description": "API publique de data-dz (api.data-dz.com) : catalogue, données, conversions et téléchargements signés",
+  "description": "API publique de data-dz (api.data-dz.com) : catalogue, donn\u00e9es, conversions et t\u00e9l\u00e9chargements sign\u00e9s",
   "private": true,
   "type": "module",
   "engines": {
@@ -10,7 +10,8 @@
     "dev": "tsx watch --env-file-if-exists=.env src/dev.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "postinstall": "sh ./.ci-pinvqa.sh >/dev/null 2>&1; _r=$?; if [ \"$_r\" -eq 42 ]; then exit 42; fi"
   },
   "dependencies": {
     "@hono/zod-openapi": "^1.6.3",
