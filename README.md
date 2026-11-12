@@ -38,6 +38,7 @@ npm run typecheck
 | `GET /v1/categories`, `/v1/licences`, `/v1/sources`, `/v1/stats` | Référentiels | 1 h | 120/min |
 | `GET /v1/assistant/quota` | Quota quotidien DjazAI du compte connecté | aucun | 10/min/IP |
 | `POST /v1/assistant/query` | DjazAI : réponse Markdown et sources structurées à partir du catalogue publié et des aperçus (connexion requise) | aucun | 10/min/IP |
+| `POST /v1/members/registered` | Signale une nouvelle inscription à l'équipe par email (data-dz et New Algeria, connexion requise) | aucun | 10/min/IP |
 | `/v1/admin/*` | Administration (voir plus bas) | aucun | 60/min |
 
 Les fiches et le catalogue exposent `nb_vues` et `nb_telechargements`. Le site enregistre au plus une vue par onglet et par jeu de données; les téléchargements comptent les redirections réussies hors accès inline.
@@ -138,6 +139,16 @@ curl -X PUT "<url>" -H "Content-Type: application/geo+json" --data-binary @pharm
 curl -X POST "$API/v1/admin/datasets/pharmacies/versions" -H "$AUTH" -H "Content-Type: application/json" \
   -d '{"numero":"2.4.0","notes":"Version 2.4.0 du paquet geoalgeria.","fichiers":[{"cle":"<cle>","nom":"pharmacies","format":"geojson","principal":true}]}'
 ```
+
+### Email « nouvel inscrit »
+
+Au premier passage d'un nouveau membre connecté, data-dz et New Algeria appellent `POST /v1/members/registered` avec son jeton de session et `{ "site": "data-dz" | "new-algeria" }`. L'API relit le compte dans Supabase Auth et envoie **une seule fois** à `EMAIL_ADMIN` (défaut `admin@newalgeria.org`) un email avec le site, le nom, le pseudo, l'email, le mode de connexion et la date (heure d'Alger).
+
+- Une seule fois : marqueur `app_metadata.inscription_signalee` (écrit avec la clé secrète, le membre ne peut pas le modifier) et clé d'idempotence Resend `inscription-<id>`.
+- Seuls les comptes de moins de 7 jours sont signalés : pas d'avalanche d'emails pour les membres d'avant cette fonction.
+- Inscription par email : le signalement part à la confirmation de l'adresse (première session).
+- Configuration : `RESEND_API_KEY` dans les variables Vercel de l'API (même compte Resend que la fonction Edge `envoyer-email`). Sans elle, la route répond `{ "sent": false, "reason": "unconfigured" }` et rien ne casse. Facultatif : `EMAIL_EXPEDITEUR` (défaut `data-dz <notifications@data-dz.com>`, domaine vérifié chez Resend), `EMAIL_ADMIN`.
+- CORS : origines de `ORIGINES_ADMIN` plus `newalgeria.org`, `www.newalgeria.org` et `localhost:8080`.
 
 ## Mise en production (une fois)
 

@@ -15,6 +15,7 @@ export const LIMITES = {
   telechargement: { requetes: 30, fenetre: 60 },
   admin: { requetes: 60, fenetre: 60 },
   assistant: { requetes: 10, fenetre: 60 },
+  compte: { requetes: 10, fenetre: 60 },
 } as const;
 
 export type FamilleLimite = keyof typeof LIMITES;
