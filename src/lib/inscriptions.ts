@@ -1,7 +1,7 @@
 import type { User } from "@supabase/supabase-js";
 
 /**
- * Email envoyé à l'équipe (EMAIL_ADMIN, admin@newalgeria.org par défaut) à chaque nouvelle inscription,
+ * Email envoyé à l'équipe (EMAIL_ADMIN, newalgeria.org@gmail.com par défaut) à chaque nouvelle inscription,
  * sur data-dz comme sur New Algeria (même projet Supabase).
  *
  * Le site appelle POST /v1/members/registered au premier passage d'un nouveau membre connecté ; l'API vérifie le JWT,

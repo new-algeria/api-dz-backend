@@ -142,7 +142,7 @@ curl -X POST "$API/v1/admin/datasets/pharmacies/versions" -H "$AUTH" -H "Content
 
 ### Email « nouvel inscrit »
 
-Au premier passage d'un nouveau membre connecté, data-dz et New Algeria appellent `POST /v1/members/registered` avec son jeton de session et `{ "site": "data-dz" | "new-algeria" }`. L'API relit le compte dans Supabase Auth et envoie **une seule fois** à `EMAIL_ADMIN` (défaut `admin@newalgeria.org`) un email avec le site, le nom, le pseudo, l'email, le mode de connexion et la date (heure d'Alger).
+Au premier passage d'un nouveau membre connecté, data-dz et New Algeria appellent `POST /v1/members/registered` avec son jeton de session et `{ "site": "data-dz" | "new-algeria" }`. L'API relit le compte dans Supabase Auth et envoie **une seule fois** à `EMAIL_ADMIN` (défaut `newalgeria.org@gmail.com`) un email avec le site, le nom, le pseudo, l'email, le mode de connexion et la date (heure d'Alger).
 
 - Une seule fois : marqueur `app_metadata.inscription_signalee` (écrit avec la clé secrète, le membre ne peut pas le modifier) et clé d'idempotence Resend `inscription-<id>`.
 - Seuls les comptes de moins de 7 jours sont signalés : pas d'avalanche d'emails pour les membres d'avant cette fonction.

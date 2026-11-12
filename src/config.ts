@@ -28,7 +28,7 @@ const schemaEnv = z.object({
   // Email à l'équipe pour chaque nouvelle inscription (data-dz et New Algeria). Sans clé Resend : rien n'est envoyé.
   RESEND_API_KEY: z.string().min(1).optional(),
   EMAIL_EXPEDITEUR: z.string().min(3).default("data-dz <notifications@data-dz.com>"),
-  EMAIL_ADMIN: z.email().default("admin@newalgeria.org"),
+  EMAIL_ADMIN: z.email().default("newalgeria.org@gmail.com"),
 
   UPSTASH_REDIS_REST_URL: z.url().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
