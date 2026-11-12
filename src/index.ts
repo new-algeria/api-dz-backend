@@ -15,6 +15,7 @@ import { ErreurApi, RedirectionDonnee, reponseProbleme } from "./lib/erreurs.js"
 import { LIMITES } from "./middleware/limite-debit.js";
 import { routesAdmin } from "./routes/admin.js";
 import { routesAssistant } from "./routes/assistant.js";
+import { routesMembres } from "./routes/membres.js";
 import { routesPubliques } from "./routes/public.js";
 import type { EnvApp } from "./types.js";
 
@@ -46,6 +47,9 @@ const corsPublic = cors({
 });
 let corsAdmin: ReturnType<typeof cors> | undefined;
 let corsAssistant: ReturnType<typeof cors> | undefined;
+let corsMembres: ReturnType<typeof cors> | undefined;
+/** Sites qui partagent les comptes : data-dz et New Algeria (en plus des origines d'administration). */
+const ORIGINES_COMPTES = ["https://newalgeria.org", "https://www.newalgeria.org", "http://localhost:8080"];
 app.use("*", (c, next) => {
   if (c.req.path === "/v1/assistant/query" || c.req.path === "/v1/assistant/quota") {
     corsAssistant ??= cors({
@@ -56,6 +60,16 @@ app.use("*", (c, next) => {
       maxAge: 600,
     });
     return corsAssistant(c, next);
+  }
+  if (c.req.path === "/v1/members/registered") {
+    corsMembres ??= cors({
+      origin: [...new Set([...lireConfig().ORIGINES_ADMIN, ...ORIGINES_COMPTES])],
+      allowMethods: ["POST", "OPTIONS"],
+      allowHeaders: ["Authorization", "Content-Type"],
+      exposeHeaders: ["RateLimit", "RateLimit-Policy", "Retry-After", "X-Request-Id"],
+      maxAge: 600,
+    });
+    return corsMembres(c, next);
   }
   if (!c.req.path.startsWith("/v1/admin")) return corsPublic(c, next);
   corsAdmin ??= cors({
@@ -96,6 +110,7 @@ app.get("/health", (c) => {
 
 app.route("/", routesPubliques);
 app.route("/", routesAssistant);
+app.route("/", routesMembres);
 app.route("/", routesAdmin);
 
 // Avant doc31 : son gestionnaire ne passe pas la main, un middleware déclaré après ne s'exécuterait jamais.
@@ -120,6 +135,7 @@ app.doc31("/openapi.json", (c) => ({
     { name: "Données", description: "Catalogue, fiches, enregistrements et téléchargements" },
     { name: "Référentiels", description: "Catégories, licences, sources, chiffres" },
     { name: "DjazAI", description: "Assistant du catalogue, avec réponse Markdown et sources structurées" },
+    { name: "Membres", description: "Comptes partagés entre data-dz et New Algeria" },
     { name: "Administration", description: "Réservé aux administrateurs de data-dz et au script de synchronisation" },
   ],
 }));
