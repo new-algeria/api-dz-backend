@@ -97,3 +97,52 @@ def test_data_validation_requires_all_69_wilayas_for_every_month():
     assert report["nb_lignes"] == 138
     with pytest.raises(ValueError, match="Période mensuelle discontinue"):
         calculer.verifier_donnees(rows[:69] + rows[138:], names, "2025-01", "2025-02")
+
+def test_corrected_era5_months_are_overwritten_without_changing_soil_or_temperature():
+    rows = [
+        {
+            "code_wilaya": "01",
+            "date": "2023-01-01",
+            "precipitation_mm": 999.0,
+            "humidite_sol_0_100_cm": 0.21,
+            "temperature_moyenne_c": 24.5,
+        },
+        {
+            "code_wilaya": "02",
+            "date": "2023-01-01",
+            "precipitation_mm": 888.0,
+            "humidite_sol_0_100_cm": 0.31,
+            "temperature_moyenne_c": 19.5,
+        },
+        {
+            "code_wilaya": "01",
+            "date": "2024-03-01",
+            "precipitation_mm": 123.0,
+            "humidite_sol_0_100_cm": 0.11,
+            "temperature_moyenne_c": 18.0,
+        },
+    ]
+    calculer.appliquer_corrections_precipitations(
+        rows,
+        {("01", "2023-01-01"): 12.5, ("02", "2023-01-01"): 8.5},
+    )
+    assert rows[0]["precipitation_mm"] == 12.5
+    assert rows[1]["precipitation_mm"] == 8.5
+    assert rows[2]["precipitation_mm"] == 123.0
+    assert rows[0]["humidite_sol_0_100_cm"] == 0.21
+    assert rows[0]["temperature_moyenne_c"] == 24.5
+
+
+def test_corrected_product_request_covers_only_the_documented_18_month_window():
+    groups = calculer.groupes_requetes(
+        calculer.PRECIP_CORRECTION_START,
+        calculer.PRECIP_CORRECTION_END,
+    )
+    months = []
+    for years, selected_months in groups:
+        for year in years:
+            months.extend(f"{year}-{month}" for month in selected_months)
+    assert months == calculer.months_between("2022-09", "2024-02")
+    assert len(months) == 18
+    assert calculer.PRECIP_CORRECTION_PRODUCT == "monthly_averaged_reanalysis_by_hour_of_day"
+
