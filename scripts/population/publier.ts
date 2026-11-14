@@ -72,6 +72,7 @@ const champs = {
     "### À savoir",
     "- Ce sont des **estimations par modèle**, calées sur les totaux nationaux des Nations unies, pas des chiffres de l'ONS. Le dernier recensement publié par wilaya date de 2008 (48 wilayas).",
     "- Les 11 wilayas créées en 2026 (59 à 69) sont calculées sur leurs nouveaux contours, y compris pour les années antérieures à leur création.",
+    "- La répartition entre wilayas change très peu d'une année à l'autre (toutes progressent d'environ 1,75 % par an dans cette version) : la donnée sert à comparer les wilayas entre elles et à suivre le total, pas à mesurer des écarts de croissance entre wilayas.",
     "",
     "### Sources et licences",
     "- Population : WorldPop, Université de Southampton, *Global 2 (R2025A v1)*, licence CC BY 4.0, https://doi.org/10.5258/SOTON/WP00839",

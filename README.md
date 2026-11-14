@@ -116,7 +116,7 @@ GitHub Action `.github/workflows/osm-sync.yml`, chaque jour à 5 h 17 UTC, mais 
 Lancement manuel : GitHub → Actions → « Synchro OpenStreetMap » → Run workflow (essai coché par défaut : rien n'est publié). En local : `npx tsx scripts/osm/synchro.ts --essai` (osmium requis : `brew install osmium-tool` ; sans `CLE_SYNCHRO`, lecture publique et essai seulement ; `--extrait=<pbf>`, `--seulement=sante,gas-stations`, `--forcer`). Secrets du dépôt : `API_URL`, `CLE_SYNCHRO` (même valeur que dans Vercel).
 
 ### Population par wilaya (`scripts/population/`)
-Donnée `population-wilayas` : habitants des 69 wilayas, chaque année de 2015 à 2030, à partir de la grille **WorldPop Global 2** (R2025A v1, 100 m, « constrained », licence CC BY 4.0, https://doi.org/10.5258/SOTON/WP00839) additionnée dans les contours `wilaya-boundaries` de `divisions-administratives` (GeoAlgeria, ODbL). Estimations par modèle jusqu'en 2025, projections ensuite (colonne `type`) : ce n'est pas un recensement.
+Donnée `population-wilayas` : habitants des 69 wilayas, chaque année de 2015 à 2030, à partir de la grille **WorldPop Global 2** (R2025A v1, 100 m, « constrained », licence CC BY 4.0, https://doi.org/10.5258/SOTON/WP00839) additionnée dans les contours `wilaya-boundaries` de `divisions-administratives` (GeoAlgeria, ODbL). Estimations par modèle jusqu'en 2025, projections ensuite (colonne `type`) : ce n'est pas un recensement. Dans R2025A, la répartition entre wilayas bouge très peu d'une année à l'autre (toutes progressent d'environ 1,75 % par an) : la donnée sert à comparer les wilayas et à suivre le total, pas à comparer leurs croissances.
 
 1. **Calcul** (Python 3.11+, environ 1 Go de grilles téléchargées une fois dans `scripts/population/cache/`) :
    ```bash
