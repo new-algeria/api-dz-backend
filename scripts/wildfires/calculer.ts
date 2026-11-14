@@ -241,7 +241,12 @@ async function chargerWilayas(): Promise<Wilaya[]> {
   if (collection.type !== "FeatureCollection" || !Array.isArray(collection.features) || !Array.isArray(nomenclature.wilayas)) {
     throw new Error("Les fichiers GeoAlgeria reçus ne respectent pas le format attendu.");
   }
-  const noms = new Map(nomenclature.wilayas.map((wilaya) => [Number(wilaya.code), wilaya]));
+  const noms = new Map<number, { code: number | string; name_fr: string; name_ar: string }>();
+  for (const wilaya of nomenclature.wilayas) {
+    const code = Number(wilaya.code);
+    if (noms.has(code)) throw new Error("Code de wilaya dupliqué dans la nomenclature : " + code + ".");
+    noms.set(code, wilaya);
+  }
   const wilayas = collection.features.map((feature) => {
     const code = Number(feature.properties?.code);
     const nom = noms.get(code);
@@ -332,7 +337,14 @@ async function main(): Promise<void> {
   const debut = ajouterJours(fin, -(JOURS_FENETRE - 1));
   const disponibiliteTexte = await requeteNASA(URL_FIRMS + "/data_availability/csv/" + encodeURIComponent(mapKey) + "/ALL", "Disponibilité des produits FIRMS");
   const disponibilites = parseCSV(disponibiliteTexte, ["data_id", "min_date", "max_date"], "Disponibilité FIRMS");
-  const parProduit = new Map(disponibilites.map((ligne) => [ligne.data_id, ligne]));
+  const parProduit = new Map<string, Record<string, string>>();
+  for (const ligne of disponibilites) {
+    if (!ligne.data_id || !ligne.min_date || !ligne.max_date) {
+      throw new Error("La réponse de disponibilité FIRMS contient une ligne incomplète.");
+    }
+    if (parProduit.has(ligne.data_id)) throw new Error("Produit FIRMS dupliqué dans la disponibilité : " + ligne.data_id);
+    parProduit.set(ligne.data_id, ligne);
+  }
   const lignesBrutes: LigneBrute[] = [];
   const lignesEnrichies: LigneEnrichie[] = [];
   const bilansProduits: Record<string, unknown>[] = [];
