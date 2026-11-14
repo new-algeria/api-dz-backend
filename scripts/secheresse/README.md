@@ -62,6 +62,12 @@ La première exécution télécharge l'historique complet par tranches de cinq a
 
 Options : `--sans-cache` force le nouveau téléchargement des requêtes NetCDF du passage ; `--sortie DOSSIER` change le dossier de sortie. Le script `publier.ts --verifier` consulte l'échéance `secheresse` dans `/admin/sync` ; `--essai` calcule et contrôle sans écrire de métadonnées ou de fichiers ; `--echec` inscrit un rapport d'échec.
 
+## Précipitations corrigées et mises à jour ERA5-Land
+
+ECMWF documente un défaut des champs accumulés du produit `monthly_averaged_reanalysis` entre **septembre 2022 et février 2024**. Ces valeurs ne doivent pas être utilisées telles quelles. Le pipeline récupère donc, pour cette seule variable et cette seule période, le produit `monthly_averaged_reanalysis_by_hour_of_day` à `00:00`, comme recommandé par ECMWF ; les humidités du sol et la température restent issues du produit mensuel standard.
+
+Pour la série récente, le mois civil précédent est demandé après sa clôture. ERA5-Land-T peut ensuite être remplacé par la version consolidée environ deux mois plus tard : à chaque passage, le calcul re-télécharge les deux derniers mois de l'historique et les mois plus récents, puis remplace les anciennes valeurs de cette fenêtre. Cette reprise incrémentale permet d'intégrer les révisions consolidées sans re-télécharger les 45 années à chaque exécution. Si le mois attendu n'est pas encore publié, la validation échoue et aucun fichier n'est publié.
+
 ## Synchronisation
 
 Le workflow `.github/workflows/secheresse-sync.yml` s'exécute chaque mois, mais ne calcule que si l'échéance configurée dans `/admin/sync` est atteinte. Le lancement manuel propose l'essai par défaut et une option de forçage. La publication crée une fiche en brouillon lors de la première exécution ; une fiche existante conserve son statut.
