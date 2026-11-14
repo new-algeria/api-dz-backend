@@ -1,0 +1,123 @@
+# Synchronisation ERA5-Land → data-dz (scripts/secheresse).
+# Passe chaque mois et ne calcule que si l'échéance configurée dans /admin/sync est atteinte.
+# Premier calcul : historique depuis 1981 ; les passages suivants ne re-téléchargent que le recouvrement récent.
+# Secrets : CDS_API_KEY (jeton personnel Copernicus), API_URL et CLE_SYNCHRO.
+name: Synchro sécheresse
+
+on:
+  push:
+    branches: [feat/secheresse-era5-land]
+  schedule:
+    - cron: "17 7 5 * *"
+  workflow_dispatch:
+    inputs:
+      essai:
+        description: "Essai : calculer et contrôler, ne rien publier"
+        type: boolean
+        default: true
+      forcer:
+        description: "Forcer : ignorer l'échéance"
+        type: boolean
+        default: false
+
+concurrency:
+  group: secheresse-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  controle-branche:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Vérifier les types
+        run: npm run typecheck
+      - name: Tests API
+        run: npm test
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/secheresse/requirements.txt
+      - name: Dépendances et syntaxe Python
+        run: |
+          pip install -q -r scripts/secheresse/requirements.txt
+          python -m compileall -q scripts/secheresse
+      - name: Tests climatiques
+        run: python -m pytest -q scripts/secheresse/tests
+
+  synchro:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      API_URL: ${{ secrets.API_URL }}
+      CLE_SYNCHRO: ${{ secrets.CLE_SYNCHRO }}
+      CDS_API_KEY: ${{ secrets.CDS_API_KEY }}
+      SYNCHRO_ESSAI: ${{ inputs.essai }}
+      SYNCHRO_FORCER: ${{ inputs.forcer }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Vérifier les types
+        run: npm run typecheck
+      - name: Tests API
+        run: npm test
+      - name: Début de l'exécution
+        run: echo "SYNCHRO_DEBUT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+      - name: Échéance
+        id: echeance
+        run: npx tsx scripts/secheresse/publier.ts --verifier
+      - uses: actions/setup-python@v5
+        if: steps.echeance.outputs.a_faire == 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/secheresse/requirements.txt
+      - name: Installer les dépendances climatiques
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: pip install -q -r scripts/secheresse/requirements.txt
+      - name: Configurer l'accès CDS
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: |
+          if [ -z "$CDS_API_KEY" ]; then
+            echo "::error::Le secret CDS_API_KEY est manquant. Crée un jeton personnel sur le Climate Data Store et ajoute-le dans Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          mkdir -p "$HOME"
+          printf 'url: https://cds.climate.copernicus.eu/api\nkey: %s\n' "$CDS_API_KEY" > "$HOME/.cdsapirc"
+          chmod 600 "$HOME/.cdsapirc"
+      - name: Calculer les indicateurs ERA5-Land
+        id: calcul
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: |
+          python scripts/secheresse/calculer.py \
+            --cache "$RUNNER_TEMP/secheresse/cache" \
+            --sortie "$RUNNER_TEMP/secheresse/sortie"
+      - name: Publier et rapporter
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/secheresse/publier.ts --sortie "$RUNNER_TEMP/secheresse/sortie"
+      - name: Conserver les fichiers calculés
+        if: always() && steps.calcul.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: secheresse-era5-land-sortie
+          path: ${{ runner.temp }}/secheresse/sortie/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Rapporter l'échec
+        if: failure() && steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/secheresse/publier.ts --echec "Échec de la synchronisation ERA5-Land (configuration CDS, calcul ou publication), voir les journaux."
