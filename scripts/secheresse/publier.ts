@@ -194,9 +194,9 @@ const champs = {
     ar: "الجفاف والتساقطات ورطوبة التربة في الجزائر",
   },
   description: {
-    fr: `Suivi mensuel des précipitations, des anomalies de pluie, des indices SPI-3 et SPI-12, de l'humidité des sols et de la température moyenne dans les 69 wilayas. Réanalyse ERA5-Land de Copernicus, environ 9 km, de ${rapport.periode.debut} à ${derniere}. Les données sont modélisées et publiées avec environ trois mois de recul : elles ne remplacent pas les mesures des stations météo.`,
-    en: `Monthly monitoring of precipitation, rainfall anomalies, SPI-3 and SPI-12, soil moisture and mean temperature across Algeria's 69 wilayas. Copernicus ERA5-Land reanalysis, around 9 km, from ${rapport.periode.debut} to ${derniere}. These are modelled data published with an approximately three-month delay, not a substitute for weather-station measurements.`,
-    ar: `متابعة شهرية للتساقطات وشذوذ الأمطار ومؤشري SPI-3 وSPI-12 ورطوبة التربة ومتوسط الحرارة في الولايات الجزائرية الـ69. إعادة تحليل ERA5-Land من كوبرنيكوس بدقة تقارب 9 كم، من ${rapport.periode.debut} إلى ${derniere}. هذه بيانات نمذجة تنشر بتأخر يقارب ثلاثة أشهر ولا تعوض قياسات محطات الأرصاد.`,
+    fr: `Suivi mensuel des précipitations, des anomalies de pluie, des indices SPI-3 et SPI-12, de l'humidité des sols et de la température moyenne dans les 69 wilayas. Réanalyse ERA5-Land de Copernicus, environ 9 km, de ${rapport.periode.debut} à ${derniere}. Les données sont modélisées ; la synchronisation retient le dernier mois civil complet disponible et ne remplace pas les mesures des stations météo.`,
+    en: `Monthly monitoring of precipitation, rainfall anomalies, SPI-3 and SPI-12, soil moisture and mean temperature across Algeria's 69 wilayas. Copernicus ERA5-Land reanalysis, around 9 km, from ${rapport.periode.debut} to ${derniere}. These are modelled data; the synchronisation uses the latest complete calendar month available and they are not a substitute for weather-station measurements.`,
+    ar: `متابعة شهرية للتساقطات وشذوذ الأمطار ومؤشري SPI-3 وSPI-12 ورطوبة التربة ومتوسط الحرارة في الولايات الجزائرية الـ69. إعادة تحليل ERA5-Land من كوبرنيكوس بدقة تقارب 9 كم، من ${rapport.periode.debut} إلى ${derniere}. هذه بيانات نمذجة؛ تعتمد المزامنة أحدث شهر تقويمي مكتمل متاح، ولا تعوض قياسات محطات الأرصاد.`,
   },
   readme: [
     "## Sécheresse, précipitations et humidité des sols en Algérie",
@@ -226,7 +226,7 @@ const champs = {
     "- La résolution d'environ 9 km et l'agrégation par wilaya lissent les contrastes entre communes, reliefs, vallées et zones agricoles.",
     "- SPI décrit le déficit ou l'excédent de précipitations ; il ne mesure pas à lui seul l'état de l'eau disponible pour les cultures, les barrages ou les nappes.",
     "- Le percentile d'humidité du sol est une comparaison historique saisonnière propre à chaque wilaya, pas un seuil agronomique universel.",
-    "- Le produit mensuel a un retard de publication de 2 à 3 mois ; la série s'arrête volontairement trois mois avant le mois courant pour éviter de présenter une période incomplète comme définitive.",
+    "- Le produit est actualisé mensuellement. Le calcul s'arrête au dernier mois civil complet (le mois courant n'est jamais présenté comme complet) ; si Copernicus n'a pas encore publié ce mois, l'exécution échoue sans écraser l'historique.",
     "- Les précipitations de septembre 2022 à février 2024 sont corrigées avec le produit mensuel par heure de la journée à 00:00 (correctif ECMWF), car ECMWF documente un défaut des champs accumulés du produit mensuel standard sur cette période.",
     "- Ces indicateurs sont informatifs et ne constituent ni une alerte officielle ni une déclaration administrative de sécheresse.",
     "",
