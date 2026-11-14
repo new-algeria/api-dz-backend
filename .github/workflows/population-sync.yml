@@ -38,8 +38,7 @@ jobs:
       # Champs du lancement manuel, passés en variables (jamais injectés dans la commande).
       SYNCHRO_ESSAI: ${{ inputs.essai }}
       SYNCHRO_FORCER: ${{ inputs.forcer }}
-      SORTIE: ${{ runner.temp }}/population/sortie
-      CACHE: ${{ runner.temp }}/population/cache
+      # Dossiers de travail : sous $RUNNER_TEMP, lu dans les commandes (le contexte `runner` n'existe pas au niveau du job).
     steps:
       - uses: actions/checkout@v4
 
@@ -69,11 +68,11 @@ jobs:
         if: steps.echeance.outputs.a_faire == 'true'
         run: |
           pip install -q -r scripts/population/requirements.txt
-          python scripts/population/calculer.py --cache "$CACHE" --sortie "$SORTIE"
+          python scripts/population/calculer.py --cache "$RUNNER_TEMP/population/cache" --sortie "$RUNNER_TEMP/population/sortie"
 
       - name: Publier et rapporter
         if: steps.echeance.outputs.a_faire == 'true'
-        run: npx tsx scripts/population/publier.ts --sortie "$SORTIE"
+        run: npx tsx scripts/population/publier.ts --sortie "$RUNNER_TEMP/population/sortie"
 
       - name: Rapporter l'échec
         if: failure() && steps.echeance.outputs.a_faire == 'true'
