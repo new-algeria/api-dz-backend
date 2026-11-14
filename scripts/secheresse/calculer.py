@@ -391,7 +391,7 @@ def telecharger_groupes(
 
 
 def agreger_precipitations_correctives(
-    path: Path, features: list[dict[str, Any]], mois_attendus: list[str]
+    path: Path, features: list[dict[str, Any]]
 ) -> dict[tuple[str, str], float]:
     """
     Agrège le seul champ de précipitation du produit by_hour_of_day à 00:00.
@@ -417,11 +417,10 @@ def agreger_precipitations_correctives(
     mask = masque_wilayas(features, latitude, longitude)
     dates = np.asarray(ds.time.values).astype("datetime64[M]")
     dates_texte = [str(d.astype("datetime64[M]")) for d in dates]
-    if len(dates_texte) != len(set(dates_texte)) or sorted(dates_texte) != sorted(mois_attendus):
-        raise ValueError(
-            f"Le correctif {path.name} ne couvre pas exactement la période attendue "
-            f"({mois_attendus[0]}–{mois_attendus[-1]}). Reçu : {dates_texte}."
-        )
+    if len(dates_texte) != len(set(dates_texte)):
+        raise ValueError(f"Le correctif {path.name} contient des mois dupliqués.")
+    if any(mois < PRECIP_CORRECTION_START or mois > PRECIP_CORRECTION_END for mois in dates_texte):
+        raise ValueError(f"Le correctif {path.name} contient un mois hors de la fenêtre ECMWF documentée.")
     poids = np.cos(np.deg2rad(latitude))[:, None] * np.ones((1, len(longitude)), dtype=float)
     valeurs = np.asarray(ds[variable].transpose("time", "latitude", "longitude").values, dtype=np.float64)
     resultats: dict[tuple[str, str], float] = {}
@@ -445,7 +444,7 @@ def agreger_precipitations_correctives(
             if cle in resultats:
                 raise ValueError(f"Précipitation corrective dupliquée : {cle}.")
             resultats[cle] = round(pluie_mm, 3)
-    for mois in mois_attendus:
+    for mois in dates_texte:
         absents = [f"{code:02d}" for code in range(1, 70) if (code, f"{mois}-01") not in resultats]
         if absents:
             raise ValueError(f"Précipitations correctives incomplètes pour {mois}, wilayas absentes : {absents[:8]}.")
@@ -667,7 +666,12 @@ def main() -> None:
         corrections: dict[tuple[str, str], float] = {}
         for path in fichiers_correctifs:
             print(f"Agrégation de la précipitation corrigée {path.name}.")
-            corrections.update(agreger_precipitations_correctives(path, features, months_between(correction_debut, correction_fin)))
+            corrections.update(agreger_precipitations_correctives(path, features))
+        mois_correctifs_attendus = months_between(correction_debut, correction_fin)
+        for mois in mois_correctifs_attendus:
+            absents = [f"{code:02d}" for code in range(1, 70) if (f"{code:02d}", f"{mois}-01") not in corrections]
+            if absents:
+                raise ValueError(f"Correction ERA5-Land incomplète pour {mois}, wilayas absentes : {absents[:8]}.")
         appliquer_corrections_precipitations(nouveaux, corrections)
         print(f"{len(corrections):,} valeurs mensuelles de précipitations corrigées (09/2022–02/2024).")
     # Merge idempotent : les deux derniers mois sont re-téléchargés pour intégrer une éventuelle révision CDS.
