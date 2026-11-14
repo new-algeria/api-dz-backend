@@ -70,7 +70,7 @@ const forcer = process.env.SYNCHRO_FORCER === "true";
 const declencheur = forcer ? "forcer" : process.env.GITHUB_EVENT_NAME === "workflow_dispatch" ? "manuel" : "planifie";
 const debut = process.env.SYNCHRO_DEBUT?.trim() || new Date().toISOString();
 const cle = process.env.CLE_SYNCHRO?.trim() || null;
-const api = new ClientApi((process.env.API_URL?.trim() || "https://api.data-dz.com").replace(/\\/+$/, ""), cle);
+const api = new ClientApi((process.env.API_URL?.trim() || "https://api.data-dz.com").replace(/\/+$/, ""), cle);
 
 function rapportExecution(statut: string, resume: string, details: Record<string, unknown> = {}) {
   return {
@@ -112,7 +112,7 @@ function verifierLignes(lignes: Ligne[], premiere: string, derniere: string, lab
   const parMois = new Map<string, Set<string>>();
   for (const ligne of lignes) {
     if (!codes.has(ligne.code_wilaya)) throw new Error(`${label} : code de wilaya invalide ${ligne.code_wilaya}.`);
-    if (!/^\\d{4}-\\d{2}-01$/.test(ligne.date)) throw new Error(`${label} : date mensuelle invalide ${ligne.date}.`);
+    if (!/^\d{4}-\d{2}-01$/.test(ligne.date)) throw new Error(\`\${label} : date mensuelle invalide \${ligne.date}.\`);
     if (!ligne.wilaya?.trim()) throw new Error(`${label} : nom manquant pour ${ligne.code_wilaya}.`);
     if (!Number.isFinite(ligne.precipitation_mm) || ligne.precipitation_mm < 0) throw new Error(`${label} : précipitation invalide (${ligne.code_wilaya}, ${ligne.date}).`);
     for (const cle of [
@@ -164,7 +164,7 @@ if (arguments_.includes("--verifier")) {
     }
   } else if (forcer) raison = "forcée";
   console.log(`${aFaire ? "À faire" : "Rien à faire"} : ${raison}.`);
-  if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `a_faire=${aFaire}\\n`);
+  if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, \`a_faire=\${aFaire}\n\`);
   process.exit(0);
 }
 
@@ -174,9 +174,9 @@ if (arguments_.includes("--echec")) {
 }
 
 const historique = JSON.parse(await readFile(join(sortie, `${FICHIER_HISTORIQUE}.json`), "utf8")) as Ligne[];
-const visuelles = JSON.parse(await readFile(join(sortie, `${FICHIER_VISUEL}.json`), "utf8")) as Ligne[];
-const rapport = JSON.parse(await readFile(join(sortie, "rapport.json"), "utf8")) as RapportCalcul;
-
+    "- `" + FICHIER_VISUEL + ".json` : 60 derniers mois, fichier léger utilisé pour la carte choroplèthe et les graphiques interactifs de data-dz.",
+    "- `" + FICHIER_VISUEL + ".csv` : mêmes 60 mois au format CSV.",
+    "- `" + FICHIER_HISTORIQUE + ".json` et `" + FICHIER_HISTORIQUE + ".csv` : archive complète depuis janvier 1981, utilisée aussi comme historique de référence lors des mises à jour.",
 verifierLignes(historique, rapport.periode.debut, rapport.periode.fin, "Archive historique");
 verifierLignes(visuelles, rapport.fichiers.visuel.debut, rapport.fichiers.visuel.fin, "Visuel cartographique");
 if (rapport.controle.nb_wilayas !== 69 || rapport.controle.nb_lignes !== historique.length) {
@@ -227,14 +227,15 @@ const champs = {
     "- La résolution d'environ 9 km et l'agrégation par wilaya lissent les contrastes entre communes, reliefs, vallées et zones agricoles.",
     "- SPI décrit le déficit ou l'excédent de précipitations ; il ne mesure pas à lui seul l'état de l'eau disponible pour les cultures, les barrages ou les nappes.",
     "- Le percentile d'humidité du sol est une comparaison historique saisonnière propre à chaque wilaya, pas un seuil agronomique universel.",
-    "- Le produit mensuel a un retard de publication de plusieurs semaines à quelques mois ; la série s'arrête volontairement trois mois avant le mois courant pour éviter de présenter une période incomplète comme définitive.",
+    "- Le produit mensuel a un retard de publication de 2 à 3 mois ; la série s'arrête volontairement trois mois avant le mois courant pour éviter de présenter une période incomplète comme définitive.",
+    "- Les précipitations de septembre 2022 à février 2024 sont corrigées avec le produit mensuel par heure de la journée à 00:00, car ECMWF documente un défaut des champs accumulés du produit mensuel standard sur cette période.",
     "- Ces indicateurs sont informatifs et ne constituent ni une alerte officielle ni une déclaration administrative de sécheresse.",
     "",
     "### Sources et licences",
     "- Copernicus Climate Change Service (C3S), ERA5-Land monthly averaged data from 1950 to present, DOI https://doi.org/10.24381/cds.68d2bb30, licence CC BY 4.0 : https://cds.climate.copernicus.eu/datasets/reanalysis-era5-land-monthly-means",
     "- Contours et noms des wilayas : GeoAlgeria, jeu « Divisions administratives », contours `wilaya-boundaries`, ODbL-1.0 : https://geoalgeria.com. Les géométries ne sont pas redistribuées dans ces fichiers ; elles servent à affecter les statistiques aux wilayas.",
     "- Indices SPI : calculés par data-dz à partir des précipitations ERA5-Land, avec une distribution Gamma et une masse en zéro, selon la méthode décrite ci-dessus.",
-  ].join("\\n"),
+  ].join("\n"),
   categorie_slug: "environnement",
   source_slug: "copernicus-era5-land",
   licence_code: "CC-BY-4.0",
@@ -291,12 +292,14 @@ const fichiersEntree: { nom: string; format: "json" | "csv"; principal: boolean;
   { nom: FICHIER_HISTORIQUE, format: "json", principal: false, chemin: join(sortie, `${FICHIER_HISTORIQUE}.json`) },
   { nom: FICHIER_HISTORIQUE, format: "csv", principal: false, chemin: join(sortie, `${FICHIER_HISTORIQUE}.csv`) },
 ];
-const envoyes = await Promise.all(fichiersEntree.map(async (fichier) => {
+const envoyes: (typeof fichiersEntree[number] & { cle: string })[] = [];
+for (const fichier of fichiersEntree) {
   const infos = await stat(fichier.chemin);
   if (infos.size > TAILLE_MAX_FICHIER) throw new Error(`${fichier.nom}.${fichier.format} dépasse 100 Mo.`);
   const contenu = await readFile(fichier.chemin, "utf8");
-  return { ...fichier, cle: await api.envoyerFichier(SLUG, fichier.nom, contenu, fichier.format) };
-}));
+  const cleFichier = await api.envoyerFichier(SLUG, fichier.nom, contenu, fichier.format);
+  envoyes.push({ ...fichier, cle: cleFichier });
+}
 const version = await api.publierVersion(SLUG, {
   notes: `Copernicus ERA5-Land monthly means, ${rapport.periode.debut}–${derniere}, SPI-3/SPI-12 et humidité des sols ; archive complète depuis 1981.`,
   fichiers: envoyes.map(({ cle: cleFichier, nom, format, principal }) => ({ cle: cleFichier, nom, format, principal })),
