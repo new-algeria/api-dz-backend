@@ -1,0 +1,80 @@
+# Synchronisation « Population par wilaya » → data-dz (scripts/population).
+# Passe chaque mois, mais ne travaille qu'à l'échéance réglée dans l'administration du site (/admin/sync, ligne
+# « population » : active, intervalle — 365 jours par défaut —, « forcer au prochain passage »). Un passage télécharge
+# les grilles WorldPop de l'Algérie (environ 1 Go), les additionne par wilaya, publie une nouvelle version seulement
+# si les chiffres ont changé et dépose son rapport (visible dans /admin/sync).
+#
+# Secrets du dépôt : API_URL (https://api.data-dz.com), CLE_SYNCHRO (même valeur que dans Vercel).
+name: Synchro population
+
+on:
+  schedule:
+    - cron: "41 6 3 * *"
+  workflow_dispatch:
+    inputs:
+      essai:
+        description: "Essai : tout calculer et rapporter, ne rien publier"
+        type: boolean
+        default: true
+      forcer:
+        description: "Forcer : ignorer l'échéance"
+        type: boolean
+        default: false
+
+concurrency:
+  group: population-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  synchro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      API_URL: ${{ secrets.API_URL }}
+      CLE_SYNCHRO: ${{ secrets.CLE_SYNCHRO }}
+      # Champs du lancement manuel, passés en variables (jamais injectés dans la commande).
+      SYNCHRO_ESSAI: ${{ inputs.essai }}
+      SYNCHRO_FORCER: ${{ inputs.forcer }}
+      SORTIE: ${{ runner.temp }}/population/sortie
+      CACHE: ${{ runner.temp }}/population/cache
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Début de l'exécution
+        run: echo "SYNCHRO_DEBUT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Échéance
+        id: echeance
+        run: npx tsx scripts/population/publier.ts --verifier
+
+      - uses: actions/setup-python@v5
+        if: steps.echeance.outputs.a_faire == 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/population/requirements.txt
+
+      - name: Calculer
+        id: calcul
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: |
+          pip install -q -r scripts/population/requirements.txt
+          python scripts/population/calculer.py --cache "$CACHE" --sortie "$SORTIE"
+
+      - name: Publier et rapporter
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/population/publier.ts --sortie "$SORTIE"
+
+      - name: Rapporter l'échec
+        if: failure() && steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/population/publier.ts --echec "Échec de la GitHub Action (étape « ${{ steps.calcul.outcome == 'failure' && 'Calculer' || 'Publier' }} »), voir ses journaux."

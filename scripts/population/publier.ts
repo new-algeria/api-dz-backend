@@ -1,15 +1,21 @@
-// Publie « Population par wilaya » sur data-dz à partir des fichiers produits par calculer.py.
+// Synchronisation « population » : publie « Population par wilaya » sur data-dz à partir des fichiers de calculer.py,
+// puis dépose le rapport de l'exécution (ligne `population` de la table `synchronisations`, visible dans /admin/sync).
 //
-//   CLE_SYNCHRO=… npx tsx scripts/population/publier.ts [--sortie scripts/population/sortie] [--essai]
+//   npx tsx scripts/population/publier.ts --verifier           # échéance : écrit a_faire=true|false (GITHUB_OUTPUT)
+//   npx tsx scripts/population/publier.ts [--sortie DOSSIER]   # publie (si les chiffres ont changé) et rapporte
+//   npx tsx scripts/population/publier.ts --essai              # vérifie et rapporte « essai », ne publie rien
+//   npx tsx scripts/population/publier.ts --echec "message"    # rapporte un échec (calcul impossible…)
 //
-// Variables : API_URL (défaut https://api.data-dz.com), CLE_SYNCHRO (obligatoire, sauf avec --essai).
+// Variables : API_URL (défaut https://api.data-dz.com), CLE_SYNCHRO (sans clé : essai local seulement),
+// SYNCHRO_FORCER (« true » : ignorer l'échéance), SYNCHRO_DEBUT (date ISO du début de l'exécution).
 // Une donnée nouvelle est créée en brouillon : un administrateur la relit puis la publie depuis /admin/datasets.
-// Une donnée existante garde son statut et son illustration ; seule une nouvelle version est ajoutée.
+// Une donnée existante garde son statut et son illustration ; une version n'est ajoutée que si les chiffres changent.
 
-import { readFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ClientApi } from "../osm/api.js";
+import { ClientApi, ErreurAppel } from "../osm/api.js";
 
+const CODE = "population";
 const SLUG = "population-wilayas";
 const FICHIER = "population-wilayas";
 
@@ -30,8 +36,49 @@ interface Rapport {
 }
 
 const arguments_ = process.argv.slice(2);
-const sortie = arguments_.includes("--sortie") ? arguments_[arguments_.indexOf("--sortie") + 1] : join(import.meta.dirname, "sortie");
-const essai = arguments_.includes("--essai");
+const valeurDe = (option: string) => (arguments_.includes(option) ? arguments_[arguments_.indexOf(option) + 1] : undefined);
+const sortie = valeurDe("--sortie") ?? join(import.meta.dirname, "sortie");
+const essai = arguments_.includes("--essai") || process.env.SYNCHRO_ESSAI === "true";
+const forcer = process.env.SYNCHRO_FORCER === "true";
+const declencheur = forcer ? "forcer" : process.env.GITHUB_EVENT_NAME === "workflow_dispatch" ? "manuel" : "planifie";
+const debut = process.env.SYNCHRO_DEBUT?.trim() || new Date().toISOString();
+
+const cle = process.env.CLE_SYNCHRO?.trim() || null;
+const api = new ClientApi((process.env.API_URL?.trim() || "https://api.data-dz.com").replace(/\/+$/, ""), cle);
+
+/** Rapport d'exécution dans /admin/sync (sans clé : affiché seulement). Échec ou essai : l'échéance ne bouge pas. */
+async function rapporter(statut: "reussie" | "echec" | "essai", resume: string, rapportExecution: Record<string, unknown> = {}) {
+  console.log(`[${statut}] ${resume}`);
+  if (!cle) return;
+  await api.rapporter(CODE, { statut, declencheur, debut, fin: new Date().toISOString(), resume, rapport: rapportExecution });
+}
+
+// 1. Échéance réglée dans l'administration (active, intervalle, « forcer au prochain passage »).
+if (arguments_.includes("--verifier")) {
+  let aFaire = true;
+  let raison = "aucune clé : calcul en local";
+  if (cle && !forcer) {
+    try {
+      const synchro = await api.lireSynchro(CODE);
+      aFaire = synchro.a_faire;
+      raison = aFaire ? "échéance atteinte" : synchro.actif ? `prochain passage le ${synchro.prochaine_execution}` : "synchronisation désactivée";
+    } catch (erreur) {
+      // Ligne `population` absente (migration de data-dz pas encore appliquée) : ne rien lancer tout seul.
+      if (!(erreur instanceof ErreurAppel) || (erreur.statut !== 404 && erreur.statut !== 503)) throw erreur;
+      aFaire = false;
+      raison = `synchronisation inconnue de l'API (${erreur.statut}) : migration 20261114000022 de data-dz à appliquer`;
+    }
+  } else if (forcer) raison = "forcée";
+  console.log(`${aFaire ? "À faire" : "Rien à faire"} : ${raison}.`);
+  if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `a_faire=${aFaire}\n`);
+  process.exit(0);
+}
+
+// 2. Échec du calcul (étape précédente de la GitHub Action).
+if (arguments_.includes("--echec")) {
+  await rapporter("echec", valeurDe("--echec") || "Le calcul de la population a échoué (voir les journaux de la GitHub Action).");
+  process.exit(0);
+}
 
 const lignes = JSON.parse(await readFile(join(sortie, "population-wilayas.json"), "utf8")) as Ligne[];
 const rapport = JSON.parse(await readFile(join(sortie, "rapport.json"), "utf8")) as Rapport;
@@ -97,17 +144,31 @@ const champs = {
 };
 
 console.log(`${lignes.length} lignes (${rapport.nb_wilayas} wilayas × ${rapport.annees.length} années), ${premiere}–${derniere}.`);
-if (essai) {
-  console.log("Essai : rien n'est envoyé.", JSON.stringify(champs.infos_source));
+
+/** Rapport par donnée, au format affiché par /admin/sync (comme la synchro OpenStreetMap). */
+const rapportDonnee = (resultat: Record<string, unknown>) => ({
+  extrait_du: process.env.SYNCHRO_EXTRAIT_DU || null,
+  annees: [premiere, derniere],
+  totaux: { [premiere]: rapport.nationaux[String(premiere)].total, [derniere]: rapport.nationaux[String(derniere)].total },
+  donnees: { [SLUG]: { fichiers: { [FICHIER]: { total: lignes.length } }, ...resultat } },
+});
+const resumeChiffres = `${rapport.nb_wilayas} wilayas, ${premiere}–${derniere} : ${totalFormate(premiere)} → ${totalFormate(derniere)} habitants`;
+
+if (essai || !cle) {
+  console.log("Essai : rien n'est publié.", JSON.stringify(champs.infos_source));
+  await rapporter("essai", `Essai : ${resumeChiffres}.`, rapportDonnee({ publiee: false }));
   process.exit(0);
 }
 
-const cle = process.env.CLE_SYNCHRO?.trim();
-if (!cle) throw new Error("CLE_SYNCHRO manquante (ou lancer avec --essai).");
-const api = new ClientApi((process.env.API_URL?.trim() || "https://api.data-dz.com").replace(/\/+$/, ""), cle);
-
 const { creee } = await api.enregistrerDonnee(SLUG, { ...champs, statut: "brouillon" });
 console.log(creee ? "Donnée créée en brouillon." : "Donnée existante mise à jour (statut inchangé).");
+
+// Mêmes chiffres que la version en ligne : pas de nouvelle version (évite des versions identiques chaque année).
+const actuel = creee ? null : await api.lireFichier(SLUG, FICHIER, "json");
+if (actuel && JSON.stringify(JSON.parse(actuel)) === JSON.stringify(lignes)) {
+  await rapporter("reussie", `Inchangée : ${resumeChiffres}.`, rapportDonnee({ creee, publiee: false }));
+  process.exit(0);
+}
 
 const csv = await readFile(join(sortie, "population-wilayas.csv"), "utf8");
 const cleJson = await api.envoyerFichier(SLUG, FICHIER, JSON.stringify(lignes), "json");
@@ -120,3 +181,4 @@ const version = await api.publierVersion(SLUG, {
   ],
 });
 console.log(`Version ${version.numero} publiée (${version.nb_lignes} lignes).`);
+await rapporter("reussie", `Version ${version.numero} publiée : ${resumeChiffres}.`, rapportDonnee({ creee, publiee: true, version: version.numero }));

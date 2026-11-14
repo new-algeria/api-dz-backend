@@ -124,9 +124,9 @@ Donnée `population-wilayas` : habitants des 69 wilayas, chaque année de 2015 �
    .venv/bin/python scripts/population/calculer.py            # --annees 2015-2030 par défaut
    ```
    Écrit `scripts/population/sortie/` : `population-wilayas.json` et `.csv` (format long : `code_wilaya`, `wilaya`, `wilaya_ar`, `annee`, `valeur` en habitants, `unite`, `type`) et `rapport.json` (totaux nationaux, part hors contours). Hôtes nécessaires : `data.worldpop.org`, `api.data-dz.com`.
-2. **Publication** : `CLE_SYNCHRO=… npx tsx scripts/population/publier.ts` (`--essai` pour vérifier sans rien envoyer). Une donnée nouvelle est créée **en brouillon** (catégorie `administratif`, source `worldpop`) : la relire puis la publier depuis `/admin/datasets`. Ensuite, chaque lancement ajoute seulement une version (JSON principal + CSV).
+2. **Publication** : `CLE_SYNCHRO=… npx tsx scripts/population/publier.ts` (`--essai` : tout vérifier, rien publier). Une donnée nouvelle est créée **en brouillon** (catégorie `administratif`, source `worldpop`) : la relire puis la publier depuis `/admin/datasets`. Ensuite, une version (JSON principal + CSV) n'est ajoutée que si les chiffres ont changé. Chaque exécution dépose son rapport dans `/admin/sync`.
 
-À relancer une fois par an, à chaque nouvelle version de WorldPop, ou si les contours des wilayas changent.
+**Synchronisation automatique** : ligne `population` de la table `synchronisations` (migration `20261114000022_synchro_population.sql` de data-dz, mode `interne`, 365 jours) et `.github/workflows/population-sync.yml`, qui passe le 3 de chaque mois mais ne travaille qu'à l'échéance ou si « Lancer au prochain passage » est demandé dans `/admin/sync` (`publier.ts --verifier`), puis calcule, publie et rapporte (`--echec` en cas d'erreur). Lancement manuel : GitHub → Actions → « Synchro population » (essai coché par défaut). Mêmes secrets que la synchro OpenStreetMap (`API_URL`, `CLE_SYNCHRO`). Sans la migration, l'Action ne lance rien toute seule.
 
 ### Mise en ligne d'une proposition
 
