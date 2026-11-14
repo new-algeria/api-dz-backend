@@ -252,6 +252,7 @@ const champs = {
     periode: `${rapport.periode.debut} → ${derniere}`,
     nb_wilayas: 69,
     nb_mois: rapport.controle.nb_mois,
+    nb_indicateurs: 13,
     nb_enregistrements: historique.length,
     resolution_grille: rapport.resolution_grille,
     reference_climatologique: "1991–2020",
