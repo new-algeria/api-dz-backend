@@ -112,7 +112,7 @@ function verifierLignes(lignes: Ligne[], premiere: string, derniere: string, lab
   const parMois = new Map<string, Set<string>>();
   for (const ligne of lignes) {
     if (!codes.has(ligne.code_wilaya)) throw new Error(`${label} : code de wilaya invalide ${ligne.code_wilaya}.`);
-    if (!/^\d{4}-\d{2}-01$/.test(ligne.date)) throw new Error(\`\${label} : date mensuelle invalide \${ligne.date}.\`);
+    if (!/^\d{4}-\d{2}-01$/.test(ligne.date)) throw new Error(label + " : date mensuelle invalide " + ligne.date + ".");
     if (!ligne.wilaya?.trim()) throw new Error(`${label} : nom manquant pour ${ligne.code_wilaya}.`);
     if (!Number.isFinite(ligne.precipitation_mm) || ligne.precipitation_mm < 0) throw new Error(`${label} : précipitation invalide (${ligne.code_wilaya}, ${ligne.date}).`);
     for (const cle of [
@@ -164,7 +164,7 @@ if (arguments_.includes("--verifier")) {
     }
   } else if (forcer) raison = "forcée";
   console.log(`${aFaire ? "À faire" : "Rien à faire"} : ${raison}.`);
-  if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, \`a_faire=\${aFaire}\n\`);
+  if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, "a_faire=" + aFaire + "\n");
   process.exit(0);
 }
 
@@ -218,9 +218,9 @@ const champs = {
     "Les cumuls glissants SPI-3 et SPI-12 ne sont calculés que lorsque tous les mois de la fenêtre sont présents. Si l'échantillon de référence est insuffisant pour un ajustement stable, la valeur est `null` et n'est jamais remplacée par zéro.",
     "",
     "### Fichiers",
-    `- \\`${FICHIER_VISUEL}.json\\` : 60 derniers mois, fichier léger utilisé pour la carte choroplèthe et les graphiques interactifs de data-dz.`,
-    `- \\`${FICHIER_VISUEL}.csv\\` : mêmes 60 mois au format CSV.`,
-    `- \\`${FICHIER_HISTORIQUE}.json\\` et \\`${FICHIER_HISTORIQUE}.csv\\` : archive complète depuis janvier 1981, utilisée aussi comme historique de référence lors des mises à jour.`,
+    "- `" + FICHIER_VISUEL + ".json` : 60 derniers mois, fichier léger utilisé pour la carte choroplèthe et les graphiques interactifs de data-dz.",
+    "- `" + FICHIER_VISUEL + ".csv` : mêmes 60 mois au format CSV.",
+    "- `" + FICHIER_HISTORIQUE + ".json` et `" + FICHIER_HISTORIQUE + ".csv` : archive complète depuis janvier 1981, utilisée aussi comme historique de référence lors des mises à jour.",
     "",
     "### Limites et interprétation",
     "- ERA5-Land est une **réanalyse atmosphérique et terrestre modélisée**, pas un relevé de pluviomètre ou de sonde d'humidité. Les biais locaux et les incertitudes du modèle restent présents.",
