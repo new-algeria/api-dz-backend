@@ -19,6 +19,12 @@ Indicateurs calculés :
 
 Les indices SPI sont laissés à `null` si la référence est insuffisante (moins de 20 observations ou moins de 15 valeurs positives pour l'ajustement Gamma). Les mois absents ne sont jamais assimilés à zéro.
 
+## Correction documentée des précipitations
+
+ECMWF signale que les champs accumulés du produit `monthly_averaged_reanalysis` sont erronés de septembre 2022 à février 2024. Pour cette seule variable et cette seule période, le script télécharge `monthly_averaged_reanalysis_by_hour_of_day` à `00:00`, méthode de récupération correcte indiquée dans la documentation ECMWF. Les quatre champs d'humidité du sol et la température continuent d'utiliser le produit mensuel standard, car l'avis concerne les variables accumulées. La couverture des 18 mois correctifs est vérifiée pour les 69 wilayas avant remplacement des précipitations.
+
+Référence : [Known issue ERA5-Land, ECMWF](https://confluence.ecmwf.int/spaces/CKB/pages/140385202/ERA5-Land+data+documentation) et [annonce de correction](https://forum.ecmwf.int/t/issue-affecting-era5-land-monthly-averaged-reanalysis-for-the-period-september-2022-to-february-2024/2370).
+
 ## Spatialisation
 
 Les contours GeoJSON des 69 wilayas et leurs noms sont chargés depuis la donnée publique `divisions-administratives` de data-dz (`wilaya-boundaries` et `wilayas`). Chaque cellule ERA5-Land est affectée à la wilaya qui contient son centre. Les moyennes par wilaya sont pondérées par `cos(latitude)`, approximation de la surface des cellules d'une grille latitude/longitude régulière. Un mois est publié seulement si les 69 wilayas ont toutes une valeur valide pour toutes les variables brutes requises.
@@ -72,5 +78,6 @@ Le workflow `.github/workflows/secheresse-sync.yml` s'exécute chaque mois, mais
 ## Sources et licences
 
 - Copernicus Climate Change Service (C3S), *ERA5-Land monthly averaged data from 1950 to present*, DOI [10.24381/cds.68d2bb30](https://doi.org/10.24381/cds.68d2bb30), licence CC BY 4.0 : <https://cds.climate.copernicus.eu/datasets/reanalysis-era5-land-monthly-means>.
+- Attribution requise pour les données adaptées : « Contains modified Copernicus Climate Change Service information [2026]. Neither the European Commission nor ECMWF is responsible for any use that may be made of the Copernicus information or data it contains. »
 - Référence administrative : GeoAlgeria, divisions administratives de l'Algérie, contours des wilayas sous ODbL-1.0 : <https://geoalgeria.com>. Les géométries ne sont pas redistribuées dans les fichiers climatiques ; elles servent à associer les valeurs aux wilayas.
 - Méthode SPI : standardisation des cumuls sur 3 et 12 mois par ajustement Gamma avec correction de la probabilité de précipitation nulle, calibrée par wilaya et mois de fin sur 1991–2020.
