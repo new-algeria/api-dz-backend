@@ -16,9 +16,9 @@ La clé doit être ajoutée dans les secrets GitHub sous le nom FIRMS_MAP_KEY. E
 
 Depuis la racine du dépôt :
 
-\`\`\`bash
+```bash
 FIRMS_MAP_KEY=… npx tsx scripts/wildfires/calculer.ts
-\`\`\`
+```
 
 Options :
 - --cache DOSSIER : cache des réponses FIRMS (défaut : scripts/wildfires/cache/).
