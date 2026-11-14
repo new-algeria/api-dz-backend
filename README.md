@@ -116,14 +116,14 @@ GitHub Action `.github/workflows/osm-sync.yml`, chaque jour à 5 h 17 UTC, mais 
 Lancement manuel : GitHub → Actions → « Synchro OpenStreetMap » → Run workflow (essai coché par défaut : rien n'est publié). En local : `npx tsx scripts/osm/synchro.ts --essai` (osmium requis : `brew install osmium-tool` ; sans `CLE_SYNCHRO`, lecture publique et essai seulement ; `--extrait=<pbf>`, `--seulement=sante,gas-stations`, `--forcer`). Secrets du dépôt : `API_URL`, `CLE_SYNCHRO` (même valeur que dans Vercel).
 
 
-### Détections thermiques NASA FIRMS (\`scripts/wildfires/\`)
+### Détections thermiques NASA FIRMS (`scripts/wildfires/`)
 
-Donnée \`wildfires\` : détections d'anomalies thermiques MODIS et VIIRS sur les 69 wilayas, à partir des flux NRT NASA FIRMS. La période est une fenêtre glissante de sept jours UTC ; chaque demande à l'API Area respecte la limite de cinq jours. Les détections sont des alertes thermiques, pas des incendies confirmés ni des périmètres ou surfaces brûlées.
+Donnée `wildfires` : détections d'anomalies thermiques MODIS et VIIRS sur les 69 wilayas, à partir des flux NRT NASA FIRMS. La période est une fenêtre glissante de sept jours UTC ; chaque demande à l'API Area respecte la limite de cinq jours. Les détections sont des alertes thermiques, pas des incendies confirmés ni des périmètres ou surfaces brûlées.
 
-- Fichiers NASA : \`wildfires-raw\` (JSON + CSV), source NASA FIRMS, CC0-1.0.
-- Fichiers enrichis par wilaya : \`wildfires-enriched\` (JSON + CSV) et \`wildfires\` (GeoJSON), source GeoAlgeria, ODbL-1.0 ; source et licence sont affectées au niveau des fichiers.
-- Calcul : \`npx tsx scripts/wildfires/calculer.ts\` ; publication / essai / échéance : \`scripts/wildfires/publier.ts\`.
-- Clé NASA requise : secret GitHub \`FIRMS_MAP_KEY\`. Action quotidienne : \`.github/workflows/wildfires-sync.yml\`, réglée par la ligne \`wildfires\` de \`synchronisations\` via \`/admin/sync\`.
+- Fichiers NASA : `wildfires-raw` (JSON + CSV), source NASA FIRMS, CC0-1.0.
+- Fichiers enrichis par wilaya : `wildfires-enriched` (JSON + CSV) et `wildfires` (GeoJSON), source GeoAlgeria, ODbL-1.0 ; source et licence sont affectées au niveau des fichiers.
+- Calcul : `npx tsx scripts/wildfires/calculer.ts` ; publication / essai / échéance : `scripts/wildfires/publier.ts`.
+- Clé NASA requise : secret GitHub `FIRMS_MAP_KEY`. Action quotidienne : `.github/workflows/wildfires-sync.yml`, réglée par la ligne `wildfires` de `synchronisations` via `/admin/sync`.
 
 ### Population par wilaya (`scripts/population/`)
 Donnée `population-wilayas` : habitants des 69 wilayas, chaque année de 2015 à 2030, à partir de la grille **WorldPop Global 2** (R2025A v1, 100 m, « constrained », licence CC BY 4.0, https://doi.org/10.5258/SOTON/WP00839) additionnée dans les contours `wilaya-boundaries` de `divisions-administratives` (GeoAlgeria, ODbL). Estimations par modèle jusqu'en 2025, projections ensuite (colonne `type`) : ce n'est pas un recensement. Dans R2025A, la répartition entre wilayas bouge très peu d'une année à l'autre (toutes progressent d'environ 1,75 % par an) : la donnée sert à comparer les wilayas et à suivre le total, pas à comparer leurs croissances.
