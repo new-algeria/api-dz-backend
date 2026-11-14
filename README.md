@@ -115,6 +115,19 @@ GitHub Action `.github/workflows/osm-sync.yml`, chaque jour à 5 h 17 UTC, mais 
 
 Lancement manuel : GitHub → Actions → « Synchro OpenStreetMap » → Run workflow (essai coché par défaut : rien n'est publié). En local : `npx tsx scripts/osm/synchro.ts --essai` (osmium requis : `brew install osmium-tool` ; sans `CLE_SYNCHRO`, lecture publique et essai seulement ; `--extrait=<pbf>`, `--seulement=sante,gas-stations`, `--forcer`). Secrets du dépôt : `API_URL`, `CLE_SYNCHRO` (même valeur que dans Vercel).
 
+### Population par wilaya (`scripts/population/`)
+Donnée `population-wilayas` : habitants des 69 wilayas, chaque année de 2015 à 2030, à partir de la grille **WorldPop Global 2** (R2025A v1, 100 m, « constrained », licence CC BY 4.0, https://doi.org/10.5258/SOTON/WP00839) additionnée dans les contours `wilaya-boundaries` de `divisions-administratives` (GeoAlgeria, ODbL). Estimations par modèle jusqu'en 2025, projections ensuite (colonne `type`) : ce n'est pas un recensement. Dans R2025A, la répartition entre wilayas bouge très peu d'une année à l'autre (toutes progressent d'environ 1,75 % par an) : la donnée sert à comparer les wilayas et à suivre le total, pas à comparer leurs croissances.
+
+1. **Calcul** (Python 3.11+, environ 1 Go de grilles téléchargées une fois dans `scripts/population/cache/`) :
+   ```bash
+   python -m venv .venv && .venv/bin/pip install -r scripts/population/requirements.txt
+   .venv/bin/python scripts/population/calculer.py            # --annees 2015-2030 par défaut
+   ```
+   Écrit `scripts/population/sortie/` : `population-wilayas.json` et `.csv` (format long : `code_wilaya`, `wilaya`, `wilaya_ar`, `annee`, `valeur` en habitants, `unite`, `type`) et `rapport.json` (totaux nationaux, part hors contours). Hôtes nécessaires : `data.worldpop.org`, `api.data-dz.com`.
+2. **Publication** : `CLE_SYNCHRO=… npx tsx scripts/population/publier.ts` (`--essai` pour vérifier sans rien envoyer). Une donnée nouvelle est créée **en brouillon** (catégorie `administratif`, source `worldpop`) : la relire puis la publier depuis `/admin/datasets`. Ensuite, chaque lancement ajoute seulement une version (JSON principal + CSV).
+
+À relancer une fois par an, à chaque nouvelle version de WorldPop, ou si les contours des wilayas changent.
+
 ### Mise en ligne d'une proposition
 
 Bouton « Mettre en ligne » de la page de revue du site (`/moderation/submissions/:id`, admins). Corps facultatif : `{"slug": "…", "source_slug": "…"}` (slug tiré du titre sinon, `-2`, `-3`… s'il est pris ; source choisie par l'admin sur le site, `communaute` par défaut).

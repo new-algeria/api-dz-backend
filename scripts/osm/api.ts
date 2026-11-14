@@ -145,10 +145,10 @@ export class ClientApi {
   }
 
   /** URL d'envoi signée puis envoi direct à R2. Renvoie la clé à citer dans la version. */
-  async envoyerFichier(slug: string, nom: string, texte: string): Promise<string> {
+  async envoyerFichier(slug: string, nom: string, texte: string, format: "geojson" | "json" | "csv" = "geojson"): Promise<string> {
     const envoi = await this.appel<{ cle: string; url: string; content_type: string }>(`/v1/admin/datasets/${slug}/uploads`, {
       method: "POST",
-      body: JSON.stringify({ nom, format: "geojson" }),
+      body: JSON.stringify({ nom, format }),
     });
     const reponse = await fetch(envoi.url, { method: "PUT", headers: { "content-type": envoi.content_type }, body: texte });
     if (!reponse.ok) throw new ErreurAppel(reponse.status, `Envoi de ${slug}/${nom} vers R2 : ${reponse.status}`);
