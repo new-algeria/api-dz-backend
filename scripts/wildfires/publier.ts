@@ -193,23 +193,23 @@ if (enrichies.length === 0) {
 
 const champs = {
   titre: {
-    fr: "Détections de points chauds et anomalies thermiques (NASA FIRMS)",
-    en: "Satellite hot spot and thermal anomaly detections (NASA FIRMS)",
-    ar: "رصد البؤر الساخنة والشذوذات الحرارية بالأقمار الصناعية (NASA FIRMS)",
+    fr: "Points chauds et feux potentiels en Algérie",
+    en: "Hotspots and potential fires in Algeria",
+    ar: "البؤر الساخنة والحرائق المحتملة في الجزائر",
   },
   description: {
     fr:
-      "Détections satellitaires d'anomalies thermiques en Algérie, issues des produits MODIS et VIIRS de NASA FIRMS. " +
-      "Fenêtre glissante de sept jours en UTC (" + periode + "). Ces points sont des alertes de chaleur : ils ne prouvent pas à eux seuls un incendie, ne décrivent pas son périmètre et ne mesurent pas la surface brûlée.",
+      "Observations satellitaires de points chauds en Algérie, issues des produits MODIS et VIIRS de NASA FIRMS. " +
+      "Fenêtre glissante de sept jours en UTC (" + periode + "). Une détection peut signaler un feu ou une autre source de chaleur (brûlage agricole, activité industrielle, torchère) ; elle ne confirme pas à elle seule un incendie et ne décrit ni son périmètre ni la surface brûlée.",
     en:
-      "Satellite thermal anomaly detections in Algeria from NASA FIRMS MODIS and VIIRS products. " +
-      "Rolling seven-day UTC window (" + periode + "). These points are heat detections: they do not by themselves confirm a fire, define its perimeter, or measure burned area.",
+      "Satellite observations of hotspots in Algeria from NASA FIRMS MODIS and VIIRS products. " +
+      "Rolling seven-day UTC window (" + periode + "). A detection may indicate a fire or another heat source (such as agricultural burning, industrial activity, or a flare); it does not by itself confirm a fire or describe its perimeter or burned area.",
     ar:
-      "رصد الشذوذات الحرارية بالأقمار الصناعية في الجزائر من منتجات MODIS وVIIRS التابعة لـ NASA FIRMS. " +
-      "نافذة متحركة مدتها سبعة أيام بتوقيت UTC (" + periode + "). تمثل هذه النقاط إشارات حرارية ولا تؤكد وحدها وقوع حريق أو تحدد محيطه أو المساحة المحترقة.",
+      "رصد الأقمار الصناعية للبؤر الساخنة في الجزائر باستخدام منتجات MODIS وVIIRS من NASA FIRMS. " +
+      "نافذة متحركة لسبعة أيام بتوقيت UTC (" + periode + "). قد يشير الرصد إلى حريق أو إلى مصدر آخر للحرارة مثل الحرق الزراعي أو النشاط الصناعي أو الشعلات الغازية؛ ولا يؤكد وحده وقوع حريق أو يحدد محيطه أو المساحة المحترقة.",
   },
   readme: [
-    "## Détections de points chauds en Algérie",
+    "## Points chauds et feux potentiels en Algérie",
     "",
     "Cette donnée rassemble les anomalies thermiques satellitaires publiées par NASA FIRMS pour le territoire des 69 wilayas. Elle est actualisée par une fenêtre glissante de sept jours (dates UTC).",
     "",
