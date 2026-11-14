@@ -1,0 +1,78 @@
+# Synchronisation quotidienne NASA FIRMS → data-dz (scripts/wildfires).
+# La synchronisation ne travaille qu'à l'échéance réglée dans /admin/sync.
+# Secrets : API_URL, CLE_SYNCHRO et FIRMS_MAP_KEY (clé gratuite NASA FIRMS).
+name: Synchro wildfires
+
+on:
+  schedule:
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+    inputs:
+      essai:
+        description: "Essai : calculer et rapporter, ne rien publier"
+        type: boolean
+        default: true
+      forcer:
+        description: "Forcer : ignorer l'échéance"
+        type: boolean
+        default: false
+
+concurrency:
+  group: wildfires-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  synchro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      API_URL: ${{ secrets.API_URL }}
+      CLE_SYNCHRO: ${{ secrets.CLE_SYNCHRO }}
+      SYNCHRO_ESSAI: ${{ inputs.essai }}
+      SYNCHRO_FORCER: ${{ inputs.forcer }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Début de l'exécution
+        run: echo "SYNCHRO_DEBUT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Échéance
+        id: echeance
+        run: npx tsx scripts/wildfires/publier.ts --verifier
+
+      - name: Calculer les détections
+        id: calcul
+        if: steps.echeance.outputs.a_faire == 'true'
+        env:
+          FIRMS_MAP_KEY: ${{ secrets.FIRMS_MAP_KEY }}
+        run: |
+          npx tsx scripts/wildfires/calculer.ts \
+            --cache "$RUNNER_TEMP/wildfires/cache" \
+            --sortie "$RUNNER_TEMP/wildfires/sortie"
+
+      - name: Publier et rapporter
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/wildfires/publier.ts --sortie "$RUNNER_TEMP/wildfires/sortie"
+
+      - name: Conserver les fichiers calculés
+        if: always() && steps.calcul.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wildfires-sortie
+          path: ${{ runner.temp }}/wildfires/sortie/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Rapporter l'échec
+        if: failure() && steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/wildfires/publier.ts --echec "Échec de la GitHub Action (calcul ou publication), voir les journaux."
