@@ -72,7 +72,7 @@ Le workflow `.github/workflows/secheresse-sync.yml` s'exécute chaque mois, mais
 - Une maille d'environ 9 km, puis une moyenne par wilaya, lisse les différences entre communes, reliefs, versants, vallées et parcelles agricoles.
 - SPI mesure un déficit ou un excédent pluviométrique sur une fenêtre temporelle ; il ne mesure pas à lui seul l'eau disponible dans les sols, les barrages ou les nappes.
 - Le percentile d'humidité est une comparaison historique saisonnière, pas un seuil agronomique universel.
-- Le jeu mensuel Copernicus est publié avec un retard de plusieurs semaines à quelques mois. Pour éviter les périodes incomplètes, le calcul s'arrête trois mois avant le mois courant.
+- Le produit est actualisé mensuellement. Le calcul s'arrête au mois civil précédent et le workflow passe le 10 de chaque mois ; si le catalogue n'a pas encore publié ce mois complet, la validation bloque la publication et conserve l'historique.
 - Ces indicateurs sont informatifs ; ils ne constituent ni une alerte officielle ni une déclaration administrative de sécheresse.
 
 ## Sources et licences
