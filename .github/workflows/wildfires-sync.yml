@@ -43,6 +43,12 @@ jobs:
 
       - run: npm ci --no-audit --no-fund
 
+      - name: Vérifier les types
+        run: npm run typecheck
+
+      - name: Tester
+        run: npm test
+
       - name: Début de l'exécution
         run: echo "SYNCHRO_DEBUT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
