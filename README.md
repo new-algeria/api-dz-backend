@@ -138,6 +138,42 @@ Donnée `population-wilayas` : habitants des 69 wilayas, chaque année de 2015 �
 
 **Synchronisation automatique** : ligne `population` de la table `synchronisations` (migration `20261114000022_synchro_population.sql` de data-dz, mode `interne`, 365 jours) et `.github/workflows/population-sync.yml`, qui passe le 3 de chaque mois mais ne travaille qu'à l'échéance ou si « Lancer au prochain passage » est demandé dans `/admin/sync` (`publier.ts --verifier`), puis calcule, publie et rapporte (`--echec` en cas d'erreur). Lancement manuel : GitHub → Actions → « Synchro population » (essai coché par défaut). Mêmes secrets que la synchro OpenStreetMap (`API_URL`, `CLE_SYNCHRO`). Sans la migration, l'Action ne lance rien toute seule.
 
+### Sécheresse, précipitations et humidité des sols (`scripts/secheresse/`)
+
+Donnée `secheresse` : suivi mensuel des 69 wilayas à partir de la réanalyse **Copernicus ERA5-Land monthly averaged**, grille régulière 0,1° (environ 9 km), depuis janvier 1981. La référence climatologique est 1991–2020.
+
+- Précipitations mensuelles (mm), normales par mois calendaire et anomalies (%).
+- SPI-3 et SPI-12 (cumuls glissants standardisés par ajustement Gamma avec masse en zéro, par wilaya et mois de fin).
+- Humidité volumique des quatre couches ERA5-Land (0–7, 7–28, 28–100 et 100–289 cm), composites pondérés 0–100 cm et 0–289 cm, percentile saisonnier 0–100 cm.
+- Température moyenne mensuelle à 2 m (°C).
+
+**Précautions scientifiques :** ERA5-Land est une réanalyse modélisée, pas un relevé de station. Les moyennes par wilaya lissent les différences locales ; le SPI mesure le déficit de précipitations, pas la disponibilité des barrages ou des nappes. Les indices et percentiles sont `null` quand la référence est insuffisante ; les mois manquants ne sont jamais remplacés par zéro.
+
+**Précipitations corrigées :** ECMWF signale des accumulations erronées dans le produit mensuel standard entre septembre 2022 et février 2024. Le pipeline remplace uniquement les précipitations de cette fenêtre à partir de `monthly_averaged_reanalysis_by_hour_of_day` à 00:00 ; les autres variables restent dans le produit mensuel standard. Voir la documentation ERA5-Land d'ECMWF.
+
+- `secheresse-wilayas` JSON + CSV : 60 derniers mois, sélection de wilaya/indicateur/période sur la carte du site.
+- `secheresse-historique` JSON + CSV : archive complète depuis 1981, utilisée lors des mises à jour.
+- Attribution : Copernicus Climate Change Service (C3S), ERA5-Land, CC BY 4.0, DOI https://doi.org/10.24381/cds.68d2bb30. Mention visible : « Contains modified Copernicus Climate Change Service information 2026. Neither the European Commission nor ECMWF is responsible for any use that may be made of the Copernicus information or data it contains. »
+- Les contours `wilaya-boundaries` utilisés pour l'agrégation proviennent de GeoAlgeria (ODbL-1.0) ; leurs géométries ne sont pas redistribuées dans les fichiers climatiques.
+
+**Calcul local :**
+
+```bash
+python -m venv .venv
+.venv/bin/pip install -r scripts/secheresse/requirements.txt
+export CDS_API_KEY="<jeton personnel Climate Data Store>"
+export API_URL="https://api.data-dz.com"
+export CLE_SYNCHRO="<clé de synchronisation>"
+.venv/bin/python scripts/secheresse/calculer.py --cache /tmp/secheresse/cache --sortie /tmp/secheresse/sortie
+npx tsx scripts/secheresse/publier.ts --essai --sortie /tmp/secheresse/sortie
+```
+
+La première exécution télécharge les grilles par blocs de cinq années. Les suivantes relisent l'archive complète publiée, redemandent les deux derniers mois pour intégrer les révisions Copernicus et ne calculent que les nouveaux mois. Le pipeline se limite au dernier mois civil complet ; l'Action planifiée passe le 10 de chaque mois.
+
+**Accès Copernicus :** créer un compte CDS, accepter manuellement les conditions du jeu ERA5-Land dans son formulaire de téléchargement, puis copier le jeton personnel API dans le secret GitHub `CDS_API_KEY`. L'action écrit un `~/.cdsapirc` privé à l'exécution. Les secrets `API_URL` et `CLE_SYNCHRO` restent requis pour la publication et la reprise de l'archive.
+
+La migration `20261114000024_synchro_secheresse_era5_land.sql` du dépôt `data-dz` ajoute la source Copernicus, la licence CC BY 4.0 et la synchronisation `secheresse` (mode interne, intervalle 30 jours). Nouvelle fiche créée en brouillon ; une fiche existante conserve son statut.
+
 ### Mise en ligne d'une proposition
 
 Bouton « Mettre en ligne » de la page de revue du site (`/moderation/submissions/:id`, admins). Corps facultatif : `{"slug": "…", "source_slug": "…"}` (slug tiré du titre sinon, `-2`, `-3`… s'il est pris ; source choisie par l'admin sur le site, `communaute` par défaut).
