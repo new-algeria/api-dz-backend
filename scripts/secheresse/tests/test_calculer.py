@@ -7,8 +7,9 @@ import calculer
 
 
 def test_month_window_and_safe_lag():
-    assert calculer.safe_latest_month(date(2026, 11, 14)) == "2026-08"
-    assert len(calculer.months_between("1981-01", "2026-08")) == 548
+    # Le catalogue CDS indique que le dernier mois complet disponible est octobre 2026.
+    assert calculer.safe_latest_month(date(2026, 11, 14)) == "2026-10"
+    assert len(calculer.months_between("1981-01", "2026-10")) == 550
 
 
 def test_cds_groups_do_not_request_partial_year_months():
@@ -145,4 +146,15 @@ def test_corrected_product_request_covers_only_the_documented_18_month_window():
     assert months == calculer.months_between("2022-09", "2024-02")
     assert len(months) == 18
     assert calculer.PRECIP_CORRECTION_PRODUCT == "monthly_averaged_reanalysis_by_hour_of_day"
+
+
+def test_corrective_request_groups_support_a_partial_incremental_overlap():
+    groups = calculer.groupes_requetes("2023-10", "2024-01")
+    assert groups == [
+        (["2023"], ["10", "11", "12"]),
+        (["2024"], ["01"]),
+    ]
+    assert calculer.months_between("2023-10", "2024-01") == [
+        "2023-10", "2023-11", "2023-12", "2024-01"
+    ]
 
