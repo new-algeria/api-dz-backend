@@ -4,6 +4,9 @@
 name: Synchro wildfires
 
 on:
+  # Chaque mise à jour de la branche de relecture lance un contrôle complet en essai, sans clé d'administration.
+  push:
+    branches: [relecture/wildfires]
   schedule:
     - cron: "23 6 * * *"
   workflow_dispatch:
@@ -25,7 +28,52 @@ permissions:
   contents: read
 
 jobs:
+  controle-branche:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      API_URL: ${{ secrets.API_URL }}
+      SYNCHRO_ESSAI: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Vérifier les types
+        run: npm run typecheck
+
+      - name: Tester
+        run: npm test
+
+      - name: Calculer les détections en essai
+        id: calcul
+        env:
+          FIRMS_MAP_KEY: ${{ secrets.FIRMS_MAP_KEY }}
+        run: |
+          npx tsx scripts/wildfires/calculer.ts \
+            --cache "$RUNNER_TEMP/wildfires/cache" \
+            --sortie "$RUNNER_TEMP/wildfires/sortie"
+
+      - name: Vérifier la publication sans écrire
+        run: npx tsx scripts/wildfires/publier.ts --essai --sortie "$RUNNER_TEMP/wildfires/sortie"
+
+      - name: Conserver les fichiers calculés
+        if: always() && steps.calcul.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wildfires-sortie
+          path: ${{ runner.temp }}/wildfires/sortie/
+          if-no-files-found: error
+          retention-days: 14
+
   synchro:
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
