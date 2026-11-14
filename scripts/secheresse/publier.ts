@@ -19,7 +19,6 @@ const SLUG = "secheresse";
 const FICHIER_VISUEL = "secheresse-wilayas";
 const FICHIER_HISTORIQUE = "secheresse-historique";
 const DOSSIER_DEFAUT = join(import.meta.dirname, "sortie");
-const TAILLE_MAX_VISUEL = 4_500_000;
 const TAILLE_MAX_FICHIER = 100 * 1024 * 1024;
 
 interface Ligne {
@@ -174,9 +173,9 @@ if (arguments_.includes("--echec")) {
 }
 
 const historique = JSON.parse(await readFile(join(sortie, `${FICHIER_HISTORIQUE}.json`), "utf8")) as Ligne[];
-    "- `" + FICHIER_VISUEL + ".json` : 60 derniers mois, fichier léger utilisé pour la carte choroplèthe et les graphiques interactifs de data-dz.",
-    "- `" + FICHIER_VISUEL + ".csv` : mêmes 60 mois au format CSV.",
-    "- `" + FICHIER_HISTORIQUE + ".json` et `" + FICHIER_HISTORIQUE + ".csv` : archive complète depuis janvier 1981, utilisée aussi comme historique de référence lors des mises à jour.",
+const visuelles = JSON.parse(await readFile(join(sortie, `${FICHIER_VISUEL}.json`), "utf8")) as Ligne[];
+const rapport = JSON.parse(await readFile(join(sortie, "rapport.json"), "utf8")) as RapportCalcul;
+
 verifierLignes(historique, rapport.periode.debut, rapport.periode.fin, "Archive historique");
 verifierLignes(visuelles, rapport.fichiers.visuel.debut, rapport.fichiers.visuel.fin, "Visuel cartographique");
 if (rapport.controle.nb_wilayas !== 69 || rapport.controle.nb_lignes !== historique.length) {
