@@ -46,6 +46,11 @@ FIRST_MONTH = "1981-01"
 SAFE_LAG_MONTHS = 3
 OVERLAP_MONTHS = 2
 VISUEL_MOIS = 60
+# Anomalie officielle du produit monthly_averaged_reanalysis (accumulations) :
+# les précipitations Sep-2022 à Fév-2024 doivent provenir du produit "by_hour_of_day" à 00:00.
+PRECIP_CORRECTION_START = "2022-09"
+PRECIP_CORRECTION_END = "2024-02"
+PRECIP_CORRECTION_PRODUCT = "monthly_averaged_reanalysis_by_hour_of_day"
 RESOLUTION_NOMINALE_DEG = 0.1
 FICHIER = "secheresse-wilayas"
 FICHIER_HISTORIQUE = "secheresse-historique"
@@ -329,7 +334,18 @@ def lire_historique(api_url: str, cle: str | None) -> list[dict[str, Any]]:
     raise RuntimeError(f"Réponse inattendue de l'API pour l'historique : HTTP {response.status_code}.")
 
 
-def telecharger_groupes(start: str, end: str, area: list[float], cache: Path, sans_cache: bool = False) -> list[Path]:
+def telecharger_groupes(
+    start: str,
+    end: str,
+    area: list[float],
+    cache: Path,
+    sans_cache: bool = False,
+    *,
+    produit: str = "monthly_averaged_reanalysis",
+    variables: list[str] | None = None,
+    prefixe: str = "era5-land",
+) -> list[Path]:
+    """Télécharge des groupes de mois ; permet le produit horaire mensuel correctif des précipitations."""
     fichier_auth = Path.home() / ".cdsapirc"
     cle_cds = os.environ.get("CDS_API_KEY", "").strip()
     if not fichier_auth.exists() and cle_cds:
@@ -344,8 +360,9 @@ def telecharger_groupes(start: str, end: str, area: list[float], cache: Path, sa
         raise RuntimeError("Dépendance cdsapi absente ; installe scripts/secheresse/requirements.txt.") from erreur
     client = cdsapi.Client()
     fichiers: list[Path] = []
+    variables_demandees = variables or VARIABLES
     for numero, (annees, mois) in enumerate(groupes_requetes(start, end), start=1):
-        nom = f"era5-land-{annees[0]}-{annees[-1]}-{mois[0]}-{mois[-1]}.nc"
+        nom = f"{prefixe}-{annees[0]}-{annees[-1]}-{mois[0]}-{mois[-1]}.nc"
         destination = cache / nom
         if sans_cache and destination.exists():
             destination.unlink()
@@ -354,8 +371,8 @@ def telecharger_groupes(start: str, end: str, area: list[float], cache: Path, sa
             continue
         cache.mkdir(parents=True, exist_ok=True)
         demande = {
-            "product_type": ["monthly_averaged_reanalysis"],
-            "variable": VARIABLES,
+            "product_type": [produit],
+            "variable": variables_demandees,
             "year": annees,
             "month": mois,
             "time": ["00:00"],
@@ -371,6 +388,77 @@ def telecharger_groupes(start: str, end: str, area: list[float], cache: Path, sa
         temporaire.replace(destination)
         fichiers.append(destination)
     return fichiers
+
+
+def agreger_precipitations_correctives(
+    path: Path, features: list[dict[str, Any]]
+) -> dict[tuple[str, str], float]:
+    """
+    Agrège le seul champ de précipitation du produit by_hour_of_day à 00:00.
+    ECMWF signale que le produit monthly_averaged_reanalysis contient des accumulations
+    erronées de septembre 2022 à février 2024 ; il faut récupérer ces mois via ce produit.
+    """
+    with xr.open_dataset(path, engine="netcdf4") as original:
+        ds = original.load()
+    if "valid_time" in ds.dims or "valid_time" in ds.coords:
+        ds = ds.rename({"valid_time": "time"})
+    if "latitude" not in ds.coords or "longitude" not in ds.coords or "time" not in ds.coords:
+        raise ValueError(f"Coordonnées inattendues dans le correctif {path.name}.")
+    variable = nom_variable(ds, ALIASES["precipitation"])
+    if "expver" in ds.dims:
+        versions = [ds.isel(expver=i, drop=True) for i in range(ds.sizes["expver"])]
+        fusion = versions[0]
+        for version in versions[1:]:
+            fusion = fusion.combine_first(version)
+        ds = fusion
+    ds = ds.sortby("latitude", ascending=False).sortby("longitude")
+    latitude = np.asarray(ds.latitude.values, dtype=float)
+    longitude = np.asarray(ds.longitude.values, dtype=float)
+    mask = masque_wilayas(features, latitude, longitude)
+    dates = np.asarray(ds.time.values).astype("datetime64[M]")
+    dates_texte = [str(d.astype("datetime64[M]")) for d in dates]
+    poids = np.cos(np.deg2rad(latitude))[:, None] * np.ones((1, len(longitude)), dtype=float)
+    valeurs = np.asarray(ds[variable].transpose("time", "latitude", "longitude").values, dtype=np.float64)
+    resultats: dict[tuple[str, str], float] = {}
+    for code in range(1, 70):
+        selection = mask == code
+        poids_cellules = poids[selection]
+        matrice = valeurs[:, selection]
+        valides = np.isfinite(matrice)
+        numerateur = np.sum(np.where(valides, matrice * poids_cellules[None, :], 0.0), axis=1)
+        denominateur = np.sum(np.where(valides, poids_cellules[None, :], 0.0), axis=1)
+        moyennes = np.divide(numerateur, denominateur, out=np.full(len(dates_texte), np.nan), where=denominateur > 0)
+        for index, mois in enumerate(dates_texte):
+            if not np.isfinite(moyennes[index]):
+                continue
+            annee, numero_mois = map(int, mois.split("-"))
+            taux = float(moyennes[index])
+            if -1e-10 <= taux < 0:
+                taux = 0.0
+            pluie_mm = precipitation_mm_mois(taux, annee, numero_mois)
+            cle = (f"{code:02d}", f"{mois}-01")
+            if cle in resultats:
+                raise ValueError(f"Précipitation corrective dupliquée : {cle}.")
+            resultats[cle] = round(pluie_mm, 3)
+    attendus = months_between(PRECIP_CORRECTION_START, PRECIP_CORRECTION_END)
+    for mois in attendus:
+        absents = [f"{code:02d}" for code in range(1, 70) if (code, f"{mois}-01") not in resultats]
+        if absents:
+            raise ValueError(f"Précipitations correctives incomplètes pour {mois}, wilayas absentes : {absents[:8]}.")
+    return resultats
+
+
+def appliquer_corrections_precipitations(lignes: list[dict[str, Any]], corrections: dict[tuple[str, str], float]) -> None:
+    """Remplace les précipitations erronées de 09/2022–02/2024, sans toucher aux autres variables."""
+    appliques: set[tuple[str, str]] = set()
+    for ligne in lignes:
+        cle = (str(ligne["code_wilaya"]), str(ligne["date"]))
+        if cle in corrections:
+            ligne["precipitation_mm"] = corrections[cle]
+            appliques.add(cle)
+    if appliques != set(corrections):
+        manquantes = sorted(set(corrections) - appliques)[:8]
+        raise ValueError(f"Correctif ERA5-Land : {len(set(corrections) - appliques)} lignes non remplacées : {manquantes}.")
 
 
 def cdf_spi(reference: np.ndarray, valeurs: np.ndarray) -> np.ndarray:
@@ -554,6 +642,30 @@ def main() -> None:
     for path in fichiers:
         print(f"Agrégation de {path.name}.")
         nouveaux.extend(agreger_netcdf(path, features, noms))
+
+    # Correctif obligatoire : le produit mensuel standard contient de mauvaises accumulations
+    # de précipitations entre septembre 2022 et février 2024. On remplace uniquement ce champ
+    # avec monthly_averaged_reanalysis_by_hour_of_day à 00:00 ; les autres variables restent
+    # celles du produit monthly_averaged_reanalysis.
+    correction_debut = max(debut, PRECIP_CORRECTION_START)
+    correction_fin = min(fin, PRECIP_CORRECTION_END)
+    if month_index(correction_debut) <= month_index(correction_fin):
+        fichiers_correctifs = telecharger_groupes(
+            correction_debut,
+            correction_fin,
+            area,
+            options.cache,
+            sans_cache=options.sans_cache,
+            produit=PRECIP_CORRECTION_PRODUCT,
+            variables=["total_precipitation"],
+            prefixe="era5-land-precipitation-corrective",
+        )
+        corrections: dict[tuple[str, str], float] = {}
+        for path in fichiers_correctifs:
+            print(f"Agrégation de la précipitation corrigée {path.name}.")
+            corrections.update(agreger_precipitations_correctives(path, features))
+        appliquer_corrections_precipitations(nouveaux, corrections)
+        print(f"{len(corrections):,} valeurs mensuelles de précipitations corrigées (09/2022–02/2024).")
     # Merge idempotent : les deux derniers mois sont re-téléchargés pour intégrer une éventuelle révision CDS.
     fusion: dict[tuple[str, str], dict[str, Any]] = {}
     for ligne in historique + nouveaux:
@@ -609,7 +721,8 @@ def main() -> None:
         "cellules_par_wilaya": {code: int(next(ligne["nb_cellules"] for ligne in lignes_brutes if ligne["code_wilaya"] == code)) for code in sorted({ligne["code_wilaya"] for ligne in lignes_brutes})},
         "notes": [
             "ERA5-Land est une réanalyse modélisée, pas un réseau de mesures au sol.",
-            "La précipitation mensuelle est calculée en convertissant le taux moyen quotidien du produit mensuel en mm/mois.",
+            "La précipitation mensuelle est calculée en convertissant le taux moyen quotidien en mm/mois.",
+            "Les accumulations de précipitations de septembre 2022 à février 2024 sont reprises du produit ERA5-Land monthly_averaged_reanalysis_by_hour_of_day à 00:00, conformément à l'avis de correction ECMWF ; les autres champs gardent le produit monthly_averaged_reanalysis.",
             "SPI-3 et SPI-12 utilisent une distribution Gamma avec probabilité de mois sans pluie, calibrée sur 1991-2020 par wilaya et mois calendaire.",
             "Le percentile d'humidité du sol compare chaque mois au même mois de la normale 1991-2020.",
             "Les indices SPI ou percentiles sont nuls (JSON null) lorsque l'échantillon de référence est insuffisant ; ils ne sont jamais remplacés par zéro.",
