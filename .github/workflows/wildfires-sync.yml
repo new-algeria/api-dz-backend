@@ -5,6 +5,7 @@ name: Synchro wildfires
 
 on:
   # Chaque mise à jour de la branche de relecture lance un contrôle complet en essai, sans clé d'administration.
+  # Cette poussée relance la validation après configuration du secret NASA FIRMS.
   push:
     branches: [relecture/wildfires]
   schedule:
