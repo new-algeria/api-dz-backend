@@ -72,6 +72,10 @@ Pour la série récente, le mois civil précédent est demandé après sa clôtu
 
 Le workflow `.github/workflows/secheresse-sync.yml` s'exécute chaque mois, mais ne calcule que si l'échéance configurée dans `/admin/sync` est atteinte. Le lancement manuel propose l'essai par défaut et une option de forçage. La publication crée une fiche en brouillon lors de la première exécution ; une fiche existante conserve son statut.
 
+## Contrôle de qualité de l'humidité du sol
+
+Les valeurs ERA5-Land d'humidité volumique sont attendues entre 0 et 1 m³/m³. Pour tenir compte d'un très faible bruit numérique négatif, les valeurs comprises entre -0,001 et 0 m³/m³ sont normalisées à zéro ; le nombre de valeurs ainsi corrigées figure dans `rapport.json`. Toute valeur inférieure à -0,001 ou supérieure à 1 bloque le calcul. Aucun écrêtage n'est appliqué aux valeurs hors de cette tolérance.
+
 ## Limites et interprétation
 
 - ERA5-Land est une **réanalyse modélisée**, pas une mesure directe d'une station météorologique ou d'une sonde d'humidité. Elle combine modèle et forçages d'observation ; ses valeurs ont des incertitudes et des biais locaux.
