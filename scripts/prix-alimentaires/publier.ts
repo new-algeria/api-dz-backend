@@ -33,7 +33,7 @@ const rapport=JSON.parse(await readFile(join(dossier,"rapport.json"),"utf8")) as
 if(!lignes.length||lignes.length!==rapport.nb_observations) throw new Error("Sortie vide ou incohérente.");
 for(const l of lignes){
  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(l.date_observation))||!/^\d{2}$/.test(String(l.code_wilaya))||!String(l.produit||"").trim()) throw new Error("Observation sans date, code wilaya ou produit.");
- for(const k of ["prix_gros_da","prix_detail_da"]) if(l[k]!==null&&(!Number.isFinite(l[k])||Number(l[k])<0)) throw new Error(`Prix invalide : ${k}`);
+ for(const k of ["prix_gros_da","prix_detail_da"]) if(l[k]!==null&&(typeof l[k]!=="number"||!Number.isFinite(l[k])||Number(l[k])<0)) throw new Error(`Prix invalide : ${k}`);
 }
 const dates=rapport.dates;
 const wilayas=rapport.wilayas;
@@ -74,7 +74,7 @@ const champs={
 };
 if(option("--essai")||!cle){console.log("Essai : aucune écriture API.");await rapporter("essai",`${lignes.length} observations, ${wilayas.length} wilaya(s).`,{[SLUG]:{nb_observations:lignes.length,wilayas,dates}});process.exit(0);}
 const existante=await api.lireDonnee(SLUG);
-await api.enregistrerDonnee(SLUG,{...champs,statut:existante?"publie":"brouillon"});
+await api.enregistrerDonnee(SLUG,{...champs,...(existante?{}:{statut:"brouillon"})});
 const ancien=existante?await api.lireFichier(SLUG,FICHIER,"json"):null;
 if(ancien&&JSON.stringify(JSON.parse(ancien))===JSON.stringify(lignes)){await rapporter("reussie","Données inchangées.",{[SLUG]:{publiee:false,nb_observations:lignes.length}});process.exit(0);}
 const [json,csv]=await Promise.all([
