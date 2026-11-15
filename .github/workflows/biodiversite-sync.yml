@@ -44,10 +44,21 @@ jobs:
         run: npm run typecheck
       - name: Tester
         run: npm test
-      - name: Valider le workflow
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/pollution_atmospherique/requirements.txt
+      - name: Installer les dépendances CAMS
+        run: pip install -q -r scripts/pollution_atmospherique/requirements.txt
+      - name: Vérifier la syntaxe et tester les calculs CAMS
+        run: |
+          python -m compileall -q scripts/pollution_atmospherique
+          python -m pytest -q scripts/pollution_atmospherique/tests
+      - name: Valider les workflows GitHub Actions
         run: |
           python -m pip install --disable-pip-version-check actionlint-py
-          actionlint .github/workflows/biodiversite-sync.yml
+          actionlint .github/workflows/biodiversite-sync.yml .github/workflows/pollution-atmospherique-sync.yml
       - name: Calculer les statistiques GBIF
         id: calcul
         run: npx tsx scripts/biodiversite/calculer.ts --sortie "$RUNNER_TEMP/biodiversite/sortie"
