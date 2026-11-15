@@ -6,7 +6,7 @@ name: Synchro sécheresse
 
 on:
   push:
-    branches: [feat/secheresse-era5-land, fix/secheresse-humidite-negative-noise, fix/secheresse-correction-precip-diagnostic]
+    branches: [feat/secheresse-era5-land, fix/secheresse-humidite-negative-noise, fix/secheresse-correction-precip-diagnostic, fix/secheresse-precip-couverture-par-wilaya]
   schedule:
     - cron: "17 7 10 * *"
   workflow_dispatch:

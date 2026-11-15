@@ -447,14 +447,27 @@ def agreger_precipitations_correctives(
     poids = np.cos(np.deg2rad(latitude))[:, None] * np.ones((1, len(longitude)), dtype=float)
     valeurs = np.asarray(ds[variable].transpose("time", "latitude", "longitude").values, dtype=np.float64)
     resultats: dict[tuple[str, str], float] = {}
+    cellules_par_wilaya: dict[int, int] = {}
+    valeurs_finies_par_wilaya: dict[int, np.ndarray] = {}
     for code in range(1, 70):
         selection = mask == code
         poids_cellules = poids[selection]
         matrice = valeurs[:, selection]
         valides = np.isfinite(matrice)
+        cellules_par_wilaya[code] = int(selection.sum())
+        valeurs_finies_par_wilaya[code] = np.count_nonzero(valides, axis=1)
         numerateur = np.sum(np.where(valides, matrice * poids_cellules[None, :], 0.0), axis=1)
         denominateur = np.sum(np.where(valides, poids_cellules[None, :], 0.0), axis=1)
         moyennes = np.divide(numerateur, denominateur, out=np.full(len(dates_texte), np.nan), where=denominateur > 0)
+        incoherences = np.flatnonzero((valeurs_finies_par_wilaya[code] > 0) & ~np.isfinite(moyennes))
+        if len(incoherences):
+            details = [dates_texte[i] for i in incoherences]
+            raise ValueError(
+                f"Incohérence d'agrégation pour la wilaya {code:02d} : cellules finies présentes "
+                f"mais moyenne pondérée non calculée pour {details}. "
+                f"cellules={cellules_par_wilaya[code]}, poids_min={float(np.min(poids_cellules)):.8g}, "
+                f"poids_max={float(np.max(poids_cellules)):.8g}."
+            )
         for index, mois in enumerate(dates_texte):
             if not np.isfinite(moyennes[index]):
                 continue
@@ -467,11 +480,16 @@ def agreger_precipitations_correctives(
             if cle in resultats:
                 raise ValueError(f"Précipitation corrective dupliquée : {cle}.")
             resultats[cle] = round(pluie_mm, 3)
-    for mois in dates_texte:
-        absents = [f"{code:02d}" for code in range(1, 70) if (code, f"{mois}-01") not in resultats]
+    for index, mois in enumerate(dates_texte):
+        absents = [f"{code:02d}" for code in range(1, 70) if (f"{code:02d}", f"{mois}-01") not in resultats]
         if absents:
-            indice = dates_texte.index(mois)
-            donnees_mois = valeurs[indice]
+            details = [
+                f"{code:02d}({cellules_par_wilaya[code]} cellules, "
+                f"{int(valeurs_finies_par_wilaya[code][index])} finies)"
+                for code in range(1, 70)
+                if f"{code:02d}" in absents
+            ]
+            donnees_mois = valeurs[index]
             cellules_wilayas = mask > 0
             finies_grille = donnees_mois[np.isfinite(donnees_mois)]
             finies_wilayas = donnees_mois[cellules_wilayas & np.isfinite(donnees_mois)]
@@ -484,6 +502,7 @@ def agreger_precipitations_correctives(
             dimensions = ",".join(ds[variable].dims)
             raise ValueError(
                 f"Précipitations correctives incomplètes pour {mois}, wilayas absentes : {absents[:8]}. "
+                f"Détail par wilaya : {details}. "
                 f"Diagnostic NetCDF {path.name} : variable={variable}, unités={unite}, "
                 f"dimensions={dimensions}, tailles={dict(ds.sizes)}, "
                 f"cellules_dans_wilayas={int(np.count_nonzero(cellules_wilayas))}, "
