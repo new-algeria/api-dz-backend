@@ -7,6 +7,7 @@ const SLUG="prix-alimentaires-wilayas";
 const FICHIER="prix-alimentaires-wilayas";
 const args=process.argv.slice(2);
 const option=(nom:string)=>args.includes(nom);
+const essai=option("--essai")||process.env.SYNCHRO_ESSAI==="true";
 const value=(nom:string)=>{const i=args.indexOf(nom);return i>=0?args[i+1]:undefined};
 const cle=process.env.CLE_SYNCHRO?.trim()||null;
 const api=new ClientApi((process.env.API_URL?.trim()||"https://api.data-dz.com").replace(/\/+$/,""),cle);
@@ -18,7 +19,7 @@ async function rapporter(statut:"reussie"|"echec"|"essai",resume:string,rapport:
 }
 if(option("--verifier")){
  let aFaire=true,raison="calcul local";
- if(cle&&process.env.SYNCHRO_FORCER!=="true"){
+ if(cle&&process.env.SYNCHRO_FORCER!=="true"&&!essai){
   try {const s=await api.lireSynchro(CODE);aFaire=s.a_faire;raison=aFaire?"échéance atteinte":s.actif?`prochain passage le ${s.prochaine_execution}`:"synchronisation désactivée";}
   catch(e){if(e instanceof ErreurAppel&&(e.statut===404||e.statut===503)){aFaire=false;raison="migration SQL absente : aucun lancement automatique";}else throw e;}
  }
@@ -72,7 +73,7 @@ const champs={
  "Les sites sources ne précisent pas de licence ouverte dans les pages collectées. Réutilisation à confirmer auprès des organismes émetteurs ; attribution et liens conservés."
  ].join("\n")
 };
-if(option("--essai")||!cle){console.log("Essai : aucune écriture API.");await rapporter("essai",`${lignes.length} observations, ${wilayas.length} wilaya(s).`,{[SLUG]:{nb_observations:lignes.length,wilayas,dates}});process.exit(0);}
+if(essai||!cle){console.log("Essai : aucune écriture API.");await rapporter("essai",`${lignes.length} observations, ${wilayas.length} wilaya(s).`,{[SLUG]:{nb_observations:lignes.length,wilayas,dates}});process.exit(0);}
 const existante=await api.lireDonnee(SLUG);
 await api.enregistrerDonnee(SLUG,{...champs,...(existante?{}:{statut:"brouillon"})});
 const ancien=existante?await api.lireFichier(SLUG,FICHIER,"json"):null;
