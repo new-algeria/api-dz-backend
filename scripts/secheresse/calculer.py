@@ -470,7 +470,28 @@ def agreger_precipitations_correctives(
     for mois in dates_texte:
         absents = [f"{code:02d}" for code in range(1, 70) if (code, f"{mois}-01") not in resultats]
         if absents:
-            raise ValueError(f"Précipitations correctives incomplètes pour {mois}, wilayas absentes : {absents[:8]}.")
+            indice = dates_texte.index(mois)
+            donnees_mois = valeurs[indice]
+            cellules_wilayas = mask > 0
+            finies_grille = donnees_mois[np.isfinite(donnees_mois)]
+            finies_wilayas = donnees_mois[cellules_wilayas & np.isfinite(donnees_mois)]
+            plage = (
+                f"{float(np.min(finies_grille)):.8g}..{float(np.max(finies_grille)):.8g}"
+                if finies_grille.size else "aucune"
+            )
+            attributs = ds[variable].attrs
+            unite = attributs.get("units", "non renseignée")
+            dimensions = ",".join(ds[variable].dims)
+            raise ValueError(
+                f"Précipitations correctives incomplètes pour {mois}, wilayas absentes : {absents[:8]}. "
+                f"Diagnostic NetCDF {path.name} : variable={variable}, unités={unite}, "
+                f"dimensions={dimensions}, tailles={dict(ds.sizes)}, "
+                f"cellules_dans_wilayas={int(np.count_nonzero(cellules_wilayas))}, "
+                f"valeurs_finies_dans_wilayas={int(finies_wilayas.size)}, "
+                f"valeurs_finies_grille={int(finies_grille.size)}, plage_grille={plage}, "
+                f"latitude={float(np.min(latitude)):.3f}..{float(np.max(latitude)):.3f}, "
+                f"longitude={float(np.min(longitude)):.3f}..{float(np.max(longitude)):.3f}."
+            )
     return resultats
 
 
