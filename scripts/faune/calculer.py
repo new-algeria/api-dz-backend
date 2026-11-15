@@ -70,6 +70,15 @@ def construire_requete(email: str) -> dict[str, Any]:
     }
 
 
+def valider_identifiant_gbif(username: str) -> None:
+    """GBIF attend le nom d'utilisateur du compte, jamais son adresse e-mail."""
+    if "@" in username:
+        raise ValueError(
+            "GBIF_USERNAME doit être le nom d'utilisateur GBIF (identifiant de connexion), "
+            "pas l'adresse e-mail du compte."
+        )
+
+
 def _requete_http(url: str, *, username: str | None = None, password: str | None = None,
                   method: str = "GET", body: bytes | None = None,
                   timeout: int = 120) -> bytes:
@@ -558,12 +567,7 @@ def main() -> None:
             "Secrets GBIF manquants : configure GBIF_USERNAME, GBIF_PASSWORD et GBIF_EMAIL "
             "dans les secrets du dépôt GitHub (compte GBIF personnel requis)."
         )
-    if "@" in username:
-        raise RuntimeError(
-            "GBIF_USERNAME contient un caractère @ et ressemble à une adresse e-mail. "
-            "GBIF exige le nom d'utilisateur du compte (identifiant de connexion), pas "
-            "l'adresse e-mail. Corrige le secret GBIF_USERNAME dans GitHub Actions."
-        )
+    valider_identifiant_gbif(username)
 
     args.cache.mkdir(parents=True, exist_ok=True)
     print("Demande d'un téléchargement GBIF complet pour les occurrences présentes en Algérie…", flush=True)
