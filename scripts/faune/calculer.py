@@ -189,6 +189,7 @@ def agreger_occurrences(lignes: Iterable[dict[str, str]]) -> dict[str, Any]:
         if statut and statut.upper() != "PRESENT":
             qualite["statut_inattendu"] += 1
 
+        base = _texte(ligne, "basisOfRecord") or "NON_RENSEIGNE"
         rang = _texte(ligne, "taxonRank").upper()
         # speciesKey suit le référentiel sélectionné par checklistKey (Catalogue of Life).
         # acceptedTaxonKey peut désigner le taxon accepté dans le Backbone et ne doit pas
@@ -217,6 +218,9 @@ def agreger_occurrences(lignes: Iterable[dict[str, str]]) -> dict[str, Any]:
                     "rang_observation": rang or "INCONNU",
                     "statuts_iucn": set(),
                     "modes_etablissement": set(),
+                    "types_enregistrement": set(),
+                    "nb_occurrences_fossiles": 0,
+                    "nb_occurrences_non_fossiles": 0,
                     "regions": {},
                     "nb_occurrences": 0,
                     "nb_occurrences_geolocalisees": 0,
@@ -225,6 +229,11 @@ def agreger_occurrences(lignes: Iterable[dict[str, str]]) -> dict[str, Any]:
                 }
                 especes[cle_espece] = entree
             entree["nb_occurrences"] += 1
+            entree["types_enregistrement"].add(base)
+            if base == "FOSSIL_SPECIMEN":
+                entree["nb_occurrences_fossiles"] += 1
+            else:
+                entree["nb_occurrences_non_fossiles"] += 1
             # Conserver la meilleure information taxonomique disponible si certaines lignes sont incomplètes.
             for champ, cle in (
                 ("embranchement", "phylum"), ("classe", "class"), ("ordre", "order"),
@@ -243,7 +252,6 @@ def agreger_occurrences(lignes: Iterable[dict[str, str]]) -> dict[str, Any]:
                 entree["modes_etablissement"].add(mode_etablissement)
 
         annee = _annee(_texte(ligne, "year"))
-        base = _texte(ligne, "basisOfRecord") or "NON_RENSEIGNE"
         if annee is None:
             qualite["sans_annee"] += 1
         else:
@@ -318,6 +326,11 @@ def agreger_occurrences(lignes: Iterable[dict[str, str]]) -> dict[str, Any]:
         modes = sorted(entree.pop("modes_etablissement"))
         entree["mode_etablissement"] = modes[0] if len(modes) == 1 else ("MULTIPLE" if modes else "NON_RENSEIGNE")
         entree["modes_etablissement_source"] = ";".join(modes)
+        bases = sorted(entree.pop("types_enregistrement"))
+        entree["types_enregistrement"] = ";".join(bases)
+        entree["fossile_uniquement"] = (
+            entree["nb_occurrences_fossiles"] > 0 and entree["nb_occurrences_non_fossiles"] == 0
+        )
         entree["nb_regions_gadm"] = len(entree["regions"])
         entree["regions_gadm"] = ";".join(sorted(entree["regions"].values()))
         entree.pop("regions")
