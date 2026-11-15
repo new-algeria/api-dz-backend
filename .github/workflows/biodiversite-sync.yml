@@ -58,7 +58,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: biodiversite-algerie-sortie
-          path: \${{ runner.temp }}/biodiversite/sortie/
+          path: ${{ runner.temp }}/biodiversite/sortie/
           if-no-files-found: error
           retention-days: 14
 
@@ -67,10 +67,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      API_URL: \${{ secrets.API_URL }}
-      CLE_SYNCHRO: \${{ secrets.CLE_SYNCHRO }}
-      SYNCHRO_ESSAI: \${{ inputs.essai }}
-      SYNCHRO_FORCER: \${{ inputs.forcer }}
+      API_URL: ${{ secrets.API_URL }}
+      CLE_SYNCHRO: ${{ secrets.CLE_SYNCHRO }}
+      SYNCHRO_ESSAI: ${{ inputs.essai }}
+      SYNCHRO_FORCER: ${{ inputs.forcer }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -95,7 +95,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: biodiversite-algerie-sortie
-          path: \${{ runner.temp }}/biodiversite/sortie/
+          path: ${{ runner.temp }}/biodiversite/sortie/
           if-no-files-found: error
           retention-days: 14
       - name: Rapporter l'échec
