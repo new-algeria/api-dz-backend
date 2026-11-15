@@ -266,6 +266,8 @@ def agreger_occurrences(lignes: Iterable[dict[str, str]]) -> dict[str, Any]:
             gid = _texte(ligne, "level1Gid")
             nom_region = _texte(ligne, "level1Name")
             if gid and nom_region:
+                if cle_espece:
+                    especes[cle_espece]["nb_occurrences_geolocalisees"] += 1
                 region = regions.setdefault(gid, {
                     "region_gadm_key": gid, "region_gadm": nom_region,
                     "occurrences": 0, "especes": set(), "familles": set(),
@@ -420,6 +422,7 @@ def ecrire_sorties(sortie: Path, resultat: dict[str, Any], rapport: dict[str, An
         "nb_lignes_historique": len(resultat["historique"]),
         "nb_lignes_sources": len(resultat["sources"]),
         "nb_indicateurs": len(resultat["indicateurs"]),
+        "nb_lignes_qualite": len(resultat["qualite"]),
     }
     tables = {
         "especes": resultat["especes"],
