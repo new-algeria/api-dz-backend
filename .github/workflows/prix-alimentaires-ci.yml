@@ -26,3 +26,5 @@ jobs:
         run: npm run typecheck
       - name: Tests
         run: npm test
+      - name: Essai réel de la source publique (sans publication)
+        run: npx tsx scripts/prix-alimentaires/collecter.ts --sortie "$RUNNER_TEMP/prix-alimentaires"
