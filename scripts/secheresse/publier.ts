@@ -45,6 +45,11 @@ interface RapportCalcul {
   resolution_grille: string;
   doi: string;
   licence_source: string;
+  qualite_humidite_sol?: {
+    valeurs_negatives_dans_tolerance_mises_a_zero: number;
+    tolerance_m3_m3: number;
+    regle: string;
+  };
   controle: {
     nb_wilayas: number;
     nb_mois: number;
@@ -267,6 +272,7 @@ const rapportDetails = {
   nb_lignes: historique.length,
   nb_lignes_visuel: visuelles.length,
   controle: rapport.controle,
+  qualite_humidite_sol: rapport.qualite_humidite_sol ?? null,
   resolution_grille: rapport.resolution_grille,
   doi: rapport.doi,
   licence_source: rapport.licence_source,
