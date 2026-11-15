@@ -1,0 +1,146 @@
+# Synchronisation semestrielle de la pollution atmosphérique depuis CAMS EAC4.
+name: Synchro pollution atmosphérique
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [relecture/pollution-atmospherique]
+  schedule:
+    - cron: "17 7 1 1,7 *"
+  workflow_dispatch:
+    inputs:
+      essai:
+        description: "Essai : calculer et rapporter, ne rien publier"
+        type: boolean
+        default: true
+      forcer:
+        description: "Forcer : ignorer l'échéance et re-télécharger les NetCDF"
+        type: boolean
+        default: false
+
+concurrency:
+  group: pollution-atmospherique-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  controle-branche:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      SYNCHRO_ESSAI: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Vérifier les types
+        run: npm run typecheck
+      - name: Tester l'API
+        run: npm test
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/pollution_atmospherique/requirements.txt
+      - name: Installer les dépendances CAMS
+        run: pip install -q -r scripts/pollution_atmospherique/requirements.txt
+      - name: Vérifier la syntaxe Python
+        run: python -m compileall -q scripts/pollution_atmospherique
+      - name: Tester les conversions et contrôles CAMS
+        run: python -m pytest -q scripts/pollution_atmospherique/tests
+      - name: Valider le workflow
+        run: |
+          python -m pip install --disable-pip-version-check actionlint-py
+          actionlint .github/workflows/pollution-atmospherique-sync.yml
+      - name: Rappeler les conditions d'accès ADS
+        run: |
+          echo "La collecte CAMS réelle est réservée à la synchronisation planifiée ou manuelle."
+          echo "Avant le premier téléchargement, accepter les deux politiques ADS décrites dans scripts/pollution_atmospherique/README.md."
+
+  synchro:
+    if: github.event_name != 'push' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      API_URL: ${{ secrets.API_URL }}
+      CLE_SYNCHRO: ${{ secrets.CLE_SYNCHRO }}
+      ADS_API_KEY: ${{ secrets.ADS_API_KEY || secrets.CDS_API_KEY }}
+      SYNCHRO_ESSAI: ${{ inputs.essai }}
+      SYNCHRO_FORCER: ${{ inputs.forcer }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/pollution_atmospherique/requirements.txt
+      - name: Installer les dépendances CAMS
+        run: pip install -q -r scripts/pollution_atmospherique/requirements.txt
+      - name: Début de l'exécution
+        run: echo "SYNCHRO_DEBUT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+      - name: Vérifier les clés d'accès
+        run: |
+          if [ -z "$ADS_API_KEY" ]; then
+            echo "::error::ADS_API_KEY manquant. Ajouter un jeton personnel Atmosphere Data Store (ou CDS_API_KEY s'il est autorisé sur ADS)."
+            exit 1
+          fi
+          if [ -z "$CLE_SYNCHRO" ]; then
+            echo "::error::CLE_SYNCHRO manquant pour publier les fichiers dans data-dz."
+            exit 1
+          fi
+      - name: Vérifier l'échéance
+        id: echeance
+        run: npx tsx scripts/pollution_atmospherique/publier.ts --verifier
+      - name: Restaurer le cache NetCDF CAMS
+        if: steps.echeance.outputs.a_faire == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/pollution-atmospherique/cache
+          key: pollution-cams-eac4-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            pollution-cams-eac4-${{ runner.os }}-
+      - name: Collecter et calculer les champs CAMS
+        id: calcul
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ] || [ "$SYNCHRO_FORCER" = "true" ]; then
+            python scripts/pollution_atmospherique/calculer.py --sans-cache \
+              --cache "$RUNNER_TEMP/pollution-atmospherique/cache" \
+              --sortie "$RUNNER_TEMP/pollution-atmospherique/sortie"
+          else
+            python scripts/pollution_atmospherique/calculer.py \
+              --cache "$RUNNER_TEMP/pollution-atmospherique/cache" \
+              --sortie "$RUNNER_TEMP/pollution-atmospherique/sortie"
+          fi
+      - name: Sauvegarder le cache NetCDF CAMS
+        if: always() && steps.echeance.outputs.a_faire == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/pollution-atmospherique/cache
+          key: pollution-cams-eac4-${{ runner.os }}-${{ github.run_id }}
+      - name: Publier et rapporter
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/pollution_atmospherique/publier.ts --sortie "$RUNNER_TEMP/pollution-atmospherique/sortie"
+      - name: Conserver les fichiers calculés
+        if: always() && steps.calcul.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pollution-atmospherique-cams-sortie
+          path: ${{ runner.temp }}/pollution-atmospherique/sortie/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Rapporter l'échec
+        if: failure() && steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/pollution_atmospherique/publier.ts --echec "Échec de la collecte CAMS EAC4 ou de la publication, voir les journaux."
