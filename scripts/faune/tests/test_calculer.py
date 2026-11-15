@@ -12,6 +12,7 @@ def ligne(**modifications):
     resultat = {
         "kingdom": "Animalia",
         "speciesKey": "123",
+        "acceptedTaxonKey": "999",
         "acceptedScientificName": "Canis lupus Linnaeus, 1758",
         "species": "Canis lupus",
         "taxonRank": "SPECIES",
@@ -66,6 +67,8 @@ class FauneGbifTests(unittest.TestCase):
 
         loup, renard = resultat["especes"]
         self.assertEqual(loup["espece_key"], "123")
+        self.assertEqual(loup["nom_scientifique"], "Canis lupus Linnaeus, 1758")
+        self.assertEqual(loup["nom_court"], "Canis lupus")
         self.assertEqual(loup["nb_occurrences"], 2)
         self.assertEqual(loup["premiere_annee"], 2020)
         self.assertEqual(loup["derniere_annee"], 2022)
