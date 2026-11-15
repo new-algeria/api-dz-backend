@@ -135,7 +135,7 @@ describe("extraction Ember pour l'Algérie", () => {
       unite: "TWh",
     });
     expect(resultat.graphique.find((ligne) => ligne.annee === 2024 && ligne.filiere === "Total generation (agrégat)")?.valeur).toBe(96.36);
-    expect(resultat.graphique.find((ligne) => ligne.annee === 2024 && ligne.filiere === "Demand")?.valeur).toBe(93.84);
+    expect(resultat.graphique.find((ligne) => ligne.annee === 2024 && ligne.filiere === "Demande")?.valeur).toBe(93.84);
     expect(Object.keys(resultat.graphique[0])).toEqual(["annee", "filiere", "valeur", "unite"]);
   });
 
