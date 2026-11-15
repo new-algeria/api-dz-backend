@@ -194,8 +194,10 @@ def agreger_occurrences(lignes: Iterable[dict[str, str]]) -> dict[str, Any]:
         # acceptedTaxonKey peut désigner le taxon accepté dans le Backbone et ne doit pas
         # remplacer la clé espèce du référentiel utilisé pour grouper le catalogue.
         cle_espece = _texte(ligne, "speciesKey")
-        nom_complet = _texte(ligne, "acceptedScientificName", "scientificName", "species")
-        nom = nom_complet
+        # species est le nom du taxon au rang espèce ; acceptedScientificName peut
+        # être plus précis (ex. sous-espèce) et reste conservé dans un champ séparé.
+        nom = _texte(ligne, "species", "acceptedScientificName", "scientificName")
+        nom_complet = _texte(ligne, "acceptedScientificName", "scientificName") or nom
         if not cle_espece or not nom:
             qualite["sans_espece_identifiee"] += 1
             cle_espece = ""
