@@ -39,6 +39,13 @@ export interface LigneElectricite {
   intensite_emissions_gco2e_kwh: number | null;
 }
 
+export interface LigneGraphique {
+  annee: number;
+  filiere: string;
+  valeur: number | null;
+  unite: "TWh";
+}
+
 export interface IndicateurAnnuel {
   annee: number;
   production_totale_twh: number | null;
@@ -72,6 +79,9 @@ export interface Rapport {
 }
 
 export interface ResultatCalcul {
+  /** Format long natif du graphique Data-DZ : année / filière / valeur / unité. */
+  graphique: LigneGraphique[];
+  /** Toutes les colonnes de la source Ember, normalisées et conservées pour téléchargement. */
   lignes: LigneElectricite[];
   indicateurs: IndicateurAnnuel[];
   rapport: Omit<Rapport, "genere_le" | "source_modifie_le" | "source_etag" | "source_sha256" | "source_octets">;
@@ -199,6 +209,21 @@ export function analyserCsv(texte: string): ResultatCalcul {
     };
   });
 
+  // Le fichier principal est conçu pour le détecteur de graphiques de data-dz :
+  // « annee » + dimension « filiere » + mesure « valeur » + « unite ».
+  // Les agrégats sont nommés explicitement afin de ne pas être confondus avec une filière élémentaire.
+  const graphique: LigneGraphique[] = lignes.map((ligne) => {
+    const filiere =
+      ligne.type_ligne === "demande"
+        ? "Demande"
+        : ligne.type_ligne === "echanges_nets"
+          ? "Importations nettes"
+          : ligne.source_agregee
+            ? `${ligne.source_electricite} (agrégat)`
+            : ligne.source_electricite;
+    return { annee: ligne.annee, filiere, valeur: ligne.valeur_twh, unite: "TWh" };
+  });
+
   const reference = indicateurs.find((ligne) => ligne.annee === 2024);
   const production2024 = valeurObligatoire(
     lignes.find((ligne) => ligne.annee === 2024 && ligne.type_ligne === "production_totale"),
@@ -222,6 +247,7 @@ export function analyserCsv(texte: string): ResultatCalcul {
 
   const annees = indicateurs.map((ligne) => ligne.annee);
   return {
+    graphique,
     lignes,
     indicateurs,
     rapport: {
@@ -292,13 +318,17 @@ async function ecrireSorties(sortie: string, resultat: ResultatCalcul, source: {
   octets: number;
 }): Promise<void> {
   await mkdir(sortie, { recursive: true });
-  const json = JSON.stringify(resultat.lignes, null, 1) + "\n";
-  const csv = Papa.unparse(resultat.lignes, { newline: "\n" }) + "\n";
+  const graphiqueJson = JSON.stringify(resultat.graphique, null, 1) + "\n";
+  const graphiqueCsv = Papa.unparse(resultat.graphique, { newline: "\n" }) + "\n";
+  const detailsJson = JSON.stringify(resultat.lignes, null, 1) + "\n";
+  const detailsCsv = Papa.unparse(resultat.lignes, { newline: "\n" }) + "\n";
   const indicateursJson = JSON.stringify(resultat.indicateurs, null, 1) + "\n";
   const indicateursCsv = Papa.unparse(resultat.indicateurs, { newline: "\n" }) + "\n";
   await Promise.all([
-    writeFile(join(sortie, "electricite-algerie.json"), json, "utf8"),
-    writeFile(join(sortie, "electricite-algerie.csv"), csv, "utf8"),
+    writeFile(join(sortie, "electricite-algerie.json"), graphiqueJson, "utf8"),
+    writeFile(join(sortie, "electricite-algerie.csv"), graphiqueCsv, "utf8"),
+    writeFile(join(sortie, "electricite-algerie-details.json"), detailsJson, "utf8"),
+    writeFile(join(sortie, "electricite-algerie-details.csv"), detailsCsv, "utf8"),
     writeFile(join(sortie, "electricite-algerie-indicateurs.json"), indicateursJson, "utf8"),
     writeFile(join(sortie, "electricite-algerie-indicateurs.csv"), indicateursCsv, "utf8"),
   ]);

@@ -127,6 +127,18 @@ describe("extraction Ember pour l'Algérie", () => {
     expect(resultat.lignes.find((ligne) => ligne.annee === 2024 && ligne.source_electricite === "Gas")?.part_generation_pct).toBe(98.589);
   });
 
+  it("prépare une courbe au format long natif Data-DZ et identifie les agrégats", () => {
+    const resultat = analyserCsv(csv);
+    expect(resultat.graphique).toHaveLength(150);
+    expect(resultat.graphique.find((ligne) => ligne.annee === 2024 && ligne.filiere === "Gas")).toMatchObject({
+      valeur: 95,
+      unite: "TWh",
+    });
+    expect(resultat.graphique.find((ligne) => ligne.annee === 2024 && ligne.filiere === "Total generation (agrégat)")?.valeur).toBe(96.36);
+    expect(resultat.graphique.find((ligne) => ligne.annee === 2024 && ligne.filiere === "Demand")?.valeur).toBe(93.84);
+    expect(Object.keys(resultat.graphique[0])).toEqual(["annee", "filiere", "valeur", "unite"]);
+  });
+
   it("produit une synthèse annuelle sans additionner les agrégats et les filières", () => {
     const resultat = analyserCsv(csv);
     expect(resultat.indicateurs).toHaveLength(25);

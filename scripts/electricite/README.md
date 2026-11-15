@@ -26,11 +26,12 @@ Options :
 - `--sans-cache` : télécharge une nouvelle version, même si un fichier est en cache.
 
 Sorties :
-- `electricite-algerie.json` / `.csv` : une ligne par année et par source/agrégat Ember.
+- `electricite-algerie.json` / `.csv` : format long graphique Data-DZ (`annee`, `filiere`, `valeur`, `unite`) avec les séries de production, agrégats, demande et échanges.
+- `electricite-algerie-details.json` / `.csv` : tous les champs Ember par année et libellé de source, dont les capacités, émissions, parts et intensités.
 - `electricite-algerie-indicateurs.json` / `.csv` : une ligne par année, indicateurs de production, demande, échanges, capacité et émissions.
 - `rapport.json` : période détectée, empreinte SHA-256, ETag / date HTTP, effectifs et contrôle historique 2024.
 
-Les colonnes du fichier principal sont en français et en `snake_case`. Les libellés des sources énergétiques restent ceux d'Ember pour préserver le vocabulaire du producteur.
+Le fichier principal adopte le format long attendu par la visualisation native de Data-DZ (`annee`, `filiere`, `valeur`, `unite`) : la fiche peut ainsi tracer une courbe interactive avec un sélecteur de filière. Les libellés des sources énergétiques restent ceux d'Ember ; les agrégats sont suffixés « (agrégat) ». Le fichier détaillé garde le libellé Ember original et le booléen `source_agregee`.
 
 ## Contrôles
 

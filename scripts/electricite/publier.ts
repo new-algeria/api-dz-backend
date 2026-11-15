@@ -14,13 +14,21 @@ import { ClientApi, ErreurAppel } from "../osm/api.js";
 const CODE = "electricite";
 const SLUG = "electricite-algerie";
 const FICHIER = "electricite-algerie";
+const FICHIER_DETAILS = "electricite-algerie-details";
 const FICHIER_INDICATEURS = "electricite-algerie-indicateurs";
 
-interface Ligne {
+interface LigneGraphique {
+  annee: number;
+  filiere: string;
+  valeur: number | null;
+  unite: string;
+}
+interface LigneDetail {
   annee: number;
   source_electricite: string;
   type_ligne: string;
   valeur_twh: number | null;
+  source_agregee: boolean;
 }
 interface Indicateur {
   annee: number;
@@ -71,6 +79,7 @@ const rapportDonnee = (rapport: Rapport, resultat: Record<string, unknown>) => (
     [SLUG]: {
       fichiers: {
         [FICHIER]: { total: rapport.nb_lignes },
+        [FICHIER_DETAILS]: { total: rapport.nb_lignes },
         [FICHIER_INDICATEURS]: { total: rapport.nb_series },
       },
       ...resultat,
@@ -102,16 +111,23 @@ if (arguments_.includes("--echec")) {
   process.exit(0);
 }
 
-const lignes = JSON.parse(await readFile(join(sortie, `${FICHIER}.json`), "utf8")) as Ligne[];
+const lignes = JSON.parse(await readFile(join(sortie, `${FICHIER}.json`), "utf8")) as LigneGraphique[];
+const details = JSON.parse(await readFile(join(sortie, `${FICHIER_DETAILS}.json`), "utf8")) as LigneDetail[];
 const indicateurs = JSON.parse(await readFile(join(sortie, `${FICHIER_INDICATEURS}.json`), "utf8")) as Indicateur[];
 const rapport = JSON.parse(await readFile(join(sortie, "rapport.json"), "utf8")) as Rapport;
-if (!lignes.length || lignes.length !== rapport.nb_lignes || !indicateurs.length || indicateurs.length !== rapport.nb_series) {
+if (!lignes.length || lignes.length !== rapport.nb_lignes || details.length !== rapport.nb_lignes || !indicateurs.length || indicateurs.length !== rapport.nb_series) {
   throw new Error("Sorties vides ou incohérentes avec rapport.json.");
 }
 if (new Set(lignes.map((ligne) => ligne.annee)).size < 20) throw new Error("Couverture historique trop courte.");
 for (const ligne of lignes) {
-  if (!Number.isInteger(ligne.annee) || !ligne.source_electricite || (ligne.valeur_twh !== null && (!Number.isFinite(ligne.valeur_twh)))) {
-    throw new Error("Ligne électrique invalide (année, source ou valeur).");
+  if (!Number.isInteger(ligne.annee) || !ligne.filiere || ligne.unite !== "TWh" || (ligne.valeur !== null && !Number.isFinite(ligne.valeur))) {
+    throw new Error("Ligne de graphique invalide (année, filière, valeur ou unité).");
+  }
+}
+for (const ligne of details) {
+  if (!Number.isInteger(ligne.annee) || !ligne.source_electricite || typeof ligne.source_agregee !== "boolean" ||
+      (ligne.valeur_twh !== null && !Number.isFinite(ligne.valeur_twh))) {
+    throw new Error("Ligne détaillée invalide (année, source, agrégat ou valeur).");
   }
 }
 for (const ligne of indicateurs) {
@@ -143,7 +159,7 @@ const champs = {
     "- `rapport.json` : plage temporelle, empreinte SHA-256 et ETag/date HTTP du fichier source, effectifs et contrôle de référence.",
     "",
     "### Méthode",
-    "Le pipeline télécharge le CSV mondial « Yearly Electricity Data » d'Ember, filtre le code pays ISO 3166-1 alpha-3 DZA, puis normalise les colonnes en français. Les lignes de la source sont conservées, y compris les agrégats ; `source_agregee=true` permet de les distinguer des filières élémentaires. Le fichier de synthèse sélectionne uniquement les lignes « Total generation », « Demand » et « Net imports » : aucune addition des agrégats et des filières n'est effectuée.",
+    "Le pipeline télécharge le CSV mondial « Yearly Electricity Data » d'Ember, filtre le code pays ISO 3166-1 alpha-3 DZA, puis produit trois représentations : un fichier graphique en format long attendu par Data-DZ, un fichier détaillé qui conserve tous les champs Ember et une synthèse annuelle. Les agrégats sont suffixés « (agrégat) » dans le graphique et portent `source_agregee=true` dans le fichier détaillé ; ils ne sont jamais additionnés aux filières élémentaires.",
     "",
     "### À savoir",
     "- Les valeurs sont annuelles et nationales : elles ne décrivent ni la consommation de chaque wilaya, ni la charge heure par heure, ni les coupures, ni la puissance de pointe.",
@@ -191,28 +207,33 @@ if (essai || !cle) {
 
 const { creee } = await api.enregistrerDonnee(SLUG, { ...champs, statut: "brouillon" });
 console.log(creee ? "Donnée créée en brouillon." : "Donnée existante mise à jour (statut inchangé).");
-const [actuel, actuelIndicateurs] = creee
-  ? [null, null]
+const [actuel, actuelDetails, actuelIndicateurs] = creee
+  ? [null, null, null]
   : await Promise.all([
       api.lireFichier(SLUG, FICHIER, "json"),
+      api.lireFichier(SLUG, FICHIER_DETAILS, "json"),
       api.lireFichier(SLUG, FICHIER_INDICATEURS, "json"),
     ]);
 const identique = (contenu: string | null, cible: unknown) =>
   contenu !== null && JSON.stringify(JSON.parse(contenu)) === JSON.stringify(cible);
-if (identique(actuel, lignes) && identique(actuelIndicateurs, indicateurs)) {
+if (identique(actuel, lignes) && identique(actuelDetails, details) && identique(actuelIndicateurs, indicateurs)) {
   await rapporter("reussie", `Inchangée : ${chiffres}.`, rapportDonnee(rapport, { creee, publiee: false }));
   process.exit(0);
 }
 
-const [json, csv, indicateursJson, indicateursCsv] = await Promise.all([
+const [json, csv, detailsJson, detailsCsv, indicateursJson, indicateursCsv] = await Promise.all([
   readFile(join(sortie, `${FICHIER}.json`), "utf8"),
   readFile(join(sortie, `${FICHIER}.csv`), "utf8"),
+  readFile(join(sortie, `${FICHIER_DETAILS}.json`), "utf8"),
+  readFile(join(sortie, `${FICHIER_DETAILS}.csv`), "utf8"),
   readFile(join(sortie, `${FICHIER_INDICATEURS}.json`), "utf8"),
   readFile(join(sortie, `${FICHIER_INDICATEURS}.csv`), "utf8"),
 ]);
-const [cleJson, cleCsv, cleIndicateursJson, cleIndicateursCsv] = await Promise.all([
+const [cleJson, cleCsv, cleDetailsJson, cleDetailsCsv, cleIndicateursJson, cleIndicateursCsv] = await Promise.all([
   api.envoyerFichier(SLUG, FICHIER, json, "json"),
   api.envoyerFichier(SLUG, FICHIER, csv, "csv"),
+  api.envoyerFichier(SLUG, FICHIER_DETAILS, detailsJson, "json"),
+  api.envoyerFichier(SLUG, FICHIER_DETAILS, detailsCsv, "csv"),
   api.envoyerFichier(SLUG, FICHIER_INDICATEURS, indicateursJson, "json"),
   api.envoyerFichier(SLUG, FICHIER_INDICATEURS, indicateursCsv, "csv"),
 ]);
@@ -221,6 +242,8 @@ const version = await api.publierVersion(SLUG, {
   fichiers: [
     { cle: cleJson, nom: FICHIER, format: "json", principal: true },
     { cle: cleCsv, nom: FICHIER, format: "csv", principal: false },
+    { cle: cleDetailsJson, nom: FICHIER_DETAILS, format: "json", principal: false },
+    { cle: cleDetailsCsv, nom: FICHIER_DETAILS, format: "csv", principal: false },
     { cle: cleIndicateursJson, nom: FICHIER_INDICATEURS, format: "json", principal: false },
     { cle: cleIndicateursCsv, nom: FICHIER_INDICATEURS, format: "csv", principal: false },
   ],
