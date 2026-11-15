@@ -366,7 +366,7 @@ async function ecrireAtomiquement(chemin: string, contenu: string): Promise<void
   await writeFile(temporaire, contenu, "utf8");
   await rename(temporaire, chemin);
 }
-function csv<T extends Record<string, unknown>>(lignes: T[]): string {
+function csv(lignes: object[]): string {
   return Papa.unparse(lignes, { newline: "\n" }) + "\n";
 }
 
