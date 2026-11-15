@@ -89,7 +89,8 @@ jobs:
           retention-days: 14
       - name: Indiquer l'accès ADS manquant
         if: env.ADS_API_KEY == ''
-        run: echo "::warning::ADS_API_KEY/CDS_API_KEY absent : tests locaux exécutés, collecte réelle ignorée. Ajouter le jeton personnel ADS et accepter les conditions du dataset CAMS EAC4."
+        run: |
+          echo "::warning::ADS_API_KEY/CDS_API_KEY absent : tests locaux exécutés, collecte réelle ignorée. Ajouter le jeton personnel ADS et accepter les conditions du dataset CAMS EAC4."
 
   synchro:
     if: github.event_name != 'push' && github.event_name != 'pull_request'
