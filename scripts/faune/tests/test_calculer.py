@@ -67,7 +67,8 @@ class FauneGbifTests(unittest.TestCase):
 
         loup, renard = resultat["especes"]
         self.assertEqual(loup["espece_key"], "123")
-        self.assertEqual(loup["nom_scientifique"], "Canis lupus Linnaeus, 1758")
+        self.assertEqual(loup["nom_scientifique"], "Canis lupus")
+        self.assertEqual(loup["nom_complet_gbif"], "Canis lupus Linnaeus, 1758")
         self.assertEqual(loup["nom_court"], "Canis lupus")
         self.assertEqual(loup["nb_occurrences"], 2)
         self.assertEqual(loup["premiere_annee"], 2020)
