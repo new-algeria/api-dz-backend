@@ -105,15 +105,15 @@ if (args.includes("--echec")) {
   process.exit(0);
 }
 
-const lignes = JSON.parse(await readFile(join(sortie, FICHIER + ".json"), "utf8")) as LigneNationale[];
-const indicateurs = JSON.parse(await readFile(join(sortie, FICHIER_INDICATEURS + ".json"), "utf8")) as Indicateur[];
-const grilleCsv = await readFile(join(sortie, FICHIER_GRILLE + ".csv"), "utf8");
-const grilleRecenteCsv = await readFile(join(sortie, FICHIER_GRILLE_RECENTE + ".csv"), "utf8");
 const fichiersATester = [FICHIER + ".json", FICHIER + ".csv", FICHIER_GRILLE + ".csv", FICHIER_GRILLE_RECENTE + ".csv", FICHIER_INDICATEURS + ".json", FICHIER_INDICATEURS + ".csv"];
 for (const nom of fichiersATester) {
   const infos = await stat(join(sortie, nom));
   if (infos.size > TAILLE_MAX_FICHIER) throw new Error(nom + " dépasse la limite de sécurité de 100 Mo (" + infos.size + " octets).");
 }
+const lignes = JSON.parse(await readFile(join(sortie, FICHIER + ".json"), "utf8")) as LigneNationale[];
+const indicateurs = JSON.parse(await readFile(join(sortie, FICHIER_INDICATEURS + ".json"), "utf8")) as Indicateur[];
+const grilleCsv = await readFile(join(sortie, FICHIER_GRILLE + ".csv"), "utf8");
+const grilleRecenteCsv = await readFile(join(sortie, FICHIER_GRILLE_RECENTE + ".csv"), "utf8");
 const rapport = JSON.parse(await readFile(join(sortie, "rapport.json"), "utf8")) as Rapport;
 
 if (!lignes.length || lignes.length !== rapport.nb_lignes_nationales ||
