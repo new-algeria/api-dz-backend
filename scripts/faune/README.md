@@ -15,7 +15,7 @@ Le téléchargement GBIF nécessite un compte personnel et les secrets GitHub GB
 
 ## Fichiers produits
 
-- faune-algerie-especes.json/.csv : une ligne par espèce GBIF, nom accepté, taxonomie, statut IUCN transmis par GBIF, nombre d'occurrences, dates et régions GADM de présence.
+- faune-algerie-especes.json/.csv : une ligne par espèce GBIF, taxonomie, statut IUCN transmis par GBIF, occurrences fossiles et non fossiles, types de preuve, indicateur « fossile uniquement », première/dernière année et régions GADM.
 - faune-algerie-regions.json/.csv : nombre d'occurrences géolocalisées et nombre d'espèces/familles distinctes par région GADM de niveau 1.
 - faune-algerie-conservation.json/.csv : nombre d'espèces par catégorie IUCN.
 - faune-algerie-historique.json/.csv : occurrences et espèces distinctes par année et type d'enregistrement.
@@ -25,6 +25,8 @@ Le téléchargement GBIF nécessite un compte personnel et les secrets GitHub GB
 - rapport.json : téléchargement, DOI, filtres et empreinte SHA-256.
 
 ## Interprétation et limites
+
+- Les occurrences de type `FOSSIL_SPECIMEN` sont identifiées séparément. Une espèce avec uniquement ces occurrences est marquée `fossile_uniquement=true` ; cela ne doit pas être interprété comme une observation actuelle.
 
 - Une occurrence GBIF est un enregistrement de présence, pas un nombre d'animaux. Le dataset n'est pas une estimation de population ou de tendance démographique.
 - Seules les occurrences dont GBIF fournit une clé et un nom d'espèce alimentent le catalogue taxonomique ; les enregistrements moins précis restent visibles dans les indicateurs de qualité.
