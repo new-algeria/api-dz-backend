@@ -33,8 +33,6 @@ jobs:
     timeout-minutes: 180
     env:
       SYNCHRO_ESSAI: "true"
-      ADS_API_KEY: ${{ secrets.ADS_API_KEY || secrets.CDS_API_KEY }}
-      API_URL: ${{ secrets.API_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -61,36 +59,10 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check actionlint-py
           actionlint .github/workflows/pollution-atmospherique-sync.yml
-      - name: Restaurer le cache NetCDF CAMS
-        if: env.ADS_API_KEY != ''
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ runner.temp }}/pollution-atmospherique/cache
-          key: pollution-cams-eac4-${{ runner.os }}-${{ github.run_id }}
-          restore-keys: |
-            pollution-cams-eac4-${{ runner.os }}-
-      - name: Collecter les données CAMS réelles
-        id: calcul
-        if: env.ADS_API_KEY != ''
+      - name: Rappeler les conditions d'accès ADS
         run: |
-          python scripts/pollution_atmospherique/calculer.py \
-            --cache "$RUNNER_TEMP/pollution-atmospherique/cache" \
-            --sortie "$RUNNER_TEMP/pollution-atmospherique/sortie"
-      - name: Vérifier le dry-run de publication
-        if: steps.calcul.outcome == 'success'
-        run: npx tsx scripts/pollution_atmospherique/publier.ts --essai --sortie "$RUNNER_TEMP/pollution-atmospherique/sortie"
-      - name: Conserver les fichiers calculés
-        if: always() && steps.calcul.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: pollution-atmospherique-cams-sortie
-          path: ${{ runner.temp }}/pollution-atmospherique/sortie/
-          if-no-files-found: error
-          retention-days: 14
-      - name: Indiquer l'accès ADS manquant
-        if: env.ADS_API_KEY == ''
-        run: |
-          echo "::warning::ADS_API_KEY/CDS_API_KEY absent : tests locaux exécutés, collecte réelle ignorée. Ajouter le jeton personnel ADS et accepter les conditions du dataset CAMS EAC4."
+          echo "La collecte CAMS réelle est réservée à la synchronisation planifiée ou manuelle."
+          echo "Avant le premier téléchargement, accepter les deux politiques ADS décrites dans scripts/pollution_atmospherique/README.md."
 
   synchro:
     if: github.event_name != 'push' && github.event_name != 'pull_request'

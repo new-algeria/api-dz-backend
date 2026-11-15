@@ -48,7 +48,10 @@ Les requêtes ADS sont découpées en blocs de cinq ans. Les champs PM2.5/PM10 s
 ## Accès ADS et synchronisation
 
 1. Disposer d'un compte Atmosphere Data Store et générer un jeton API personnel sur [la page d'accès API ADS](https://ads.atmosphere.copernicus.eu/how-to-api).
-2. Accepter les conditions d'utilisation du jeu CAMS EAC4 monthly averaged fields sur sa page ADS (étape manuelle, une fois par compte).
+2. Dans le compte ADS, accepter aussi les deux politiques demandées par le service :
+   - [Data protection and privacy statement](https://ads.atmosphere.copernicus.eu/licences/ads-data-protection-privacy-statement).
+   - [Terms of use of the Copernicus Atmosphere Data Store](https://ads.atmosphere.copernicus.eu/licences/terms-of-use-ads).
+3. Accepter ensuite les conditions d’utilisation du jeu CAMS EAC4 monthly averaged fields sur sa page ADS (étape manuelle, une fois par compte).
 3. Ajouter le jeton au secret GitHub Actions \`ADS_API_KEY\`. Le workflow accepte également \`CDS_API_KEY\` comme repli si le jeton existant de la sécheresse est également autorisé sur l'ADS.
 4. Les secrets \`API_URL\` et \`CLE_SYNCHRO\` existants servent à publier sur data-dz.
 
