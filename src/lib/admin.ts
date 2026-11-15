@@ -346,20 +346,46 @@ export async function publierVersion(
     if (!infos) throw new ErreurApi(400, "invalid_files", `Fichier non envoyé : ${fichier.nom}.${fichier.format}.`);
     if (infos.taille > TAILLE_MAX_FICHIER) throw new ErreurApi(413, "file_too_large", `${fichier.nom} dépasse 100 Mo.`);
     const reponse = await lireObjet(fichier.cle);
-    const texte = await reponse!.text();
-    const table = fichier.format === "ics" ? null : lireTable(texte, fichier.format);
-    if (fichier.format === "ics" && (!/^(?:\uFEFF)?BEGIN:VCALENDAR(?:\r?\n|$)/.test(texte) || !/END:VCALENDAR\s*$/.test(texte))) {
-      throw new ErreurApi(422, "invalid_file", `Fichier iCalendar invalide : ${fichier.nom}.ics.`);
+    if (!reponse) throw new ErreurApi(400, "invalid_files", `Fichier non envoyé : ${fichier.nom}.${fichier.format}.`);
+
+    // Le fichier principal seul sert à construire l'aperçu et le nombre de lignes.
+    // Les fichiers secondaires peuvent contenir des centaines de milliers de lignes :
+    // on les lit en flux pour calculer leur empreinte sans matérialiser un tableau JS.
+    const empreinte = createHash("sha256");
+    let description: ReturnType<typeof decrireTable> | null = null;
+    if (fichier.principal || fichier.format === "ics") {
+      const octets = new Uint8Array(await reponse.arrayBuffer());
+      empreinte.update(octets);
+      const texte = new TextDecoder().decode(octets);
+      if (fichier.format === "ics") {
+        if (!/^(?:\uFEFF)?BEGIN:VCALENDAR(?:\r?\n|$)/.test(texte) || !/END:VCALENDAR\s*$/.test(texte)) {
+          throw new ErreurApi(422, "invalid_file", `Fichier iCalendar invalide : ${fichier.nom}.ics.`);
+        }
+        if (fichier.principal) description = { colonnes: [], apercu: [], nbLignes: compterEvenementsICS(texte) };
+      } else if (fichier.principal) {
+        description = decrireTable(lireTable(texte, fichier.format));
+      }
+    } else {
+      const lecteur = reponse.body?.getReader();
+      if (!lecteur) {
+        empreinte.update(new Uint8Array(await reponse.arrayBuffer()));
+      } else {
+        try {
+          while (true) {
+            const { done, value } = await lecteur.read();
+            if (done) break;
+            empreinte.update(value);
+          }
+        } finally {
+          lecteur.releaseLock();
+        }
+      }
     }
     analyses.push({
       fichier,
       taille: infos.taille,
-      sha256: createHash("sha256").update(texte).digest("hex"),
-      description: fichier.principal
-        ? table
-          ? decrireTable(table)
-          : { colonnes: [], apercu: [], nbLignes: fichier.format === "ics" ? compterEvenementsICS(texte) : 0 }
-        : null,
+      sha256: empreinte.digest("hex"),
+      description,
     });
   }
   const principal = complement
