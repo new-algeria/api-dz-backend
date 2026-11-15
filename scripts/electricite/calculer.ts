@@ -8,7 +8,7 @@
  *   npx tsx scripts/electricite/calculer.ts [--cache DOSSIER] [--sortie DOSSIER] [--sans-cache]
  */
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import Papa from "papaparse";
 
