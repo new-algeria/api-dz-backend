@@ -48,6 +48,7 @@ FICHIERS = {
     "historique": "faune-algerie-historique",
     "sources": "faune-algerie-sources",
     "indicateurs": "faune-algerie-indicateurs",
+    "qualite": "faune-algerie-qualite",
 }
 
 
@@ -195,6 +196,7 @@ def agreger_occurrences(lignes: Iterable[dict[str, str]]) -> dict[str, Any]:
         nom = _texte(ligne, "acceptedScientificName", "species", "scientificName")
         if not cle_espece or not nom:
             qualite["sans_espece_identifiee"] += 1
+            cle_espece = ""
         else:
             entree = especes.get(cle_espece)
             if entree is None:
@@ -209,6 +211,7 @@ def agreger_occurrences(lignes: Iterable[dict[str, str]]) -> dict[str, Any]:
                     "genre": _texte(ligne, "genus"),
                     "rang_observation": rang or "INCONNU",
                     "statuts_iucn": set(),
+                    "modes_etablissement": set(),
                     "regions": {},
                     "nb_occurrences": 0,
                     "nb_occurrences_geolocalisees": 0,
@@ -229,6 +232,10 @@ def agreger_occurrences(lignes: Iterable[dict[str, str]]) -> dict[str, Any]:
                 entree["statuts_iucn"].add(categorie)
             elif categorie:
                 qualite["statuts_iucn_inattendus"] += 1
+
+            mode_etablissement = _texte(ligne, "establishmentMeans").upper()
+            if mode_etablissement:
+                entree["modes_etablissement"].add(mode_etablissement)
 
         annee = _annee(_texte(ligne, "year"))
         base = _texte(ligne, "basisOfRecord") or "NON_RENSEIGNE"
@@ -301,6 +308,9 @@ def agreger_occurrences(lignes: Iterable[dict[str, str]]) -> dict[str, Any]:
         entree["statut_iucn"] = statut_iucn
         entree["statuts_iucn_source"] = ";".join(statuts)
         entree["libelle_iucn"] = NOMS_IUCN.get(statut_iucn, "Statut non renseigné ou contradictoire")
+        modes = sorted(entree.pop("modes_etablissement"))
+        entree["mode_etablissement"] = modes[0] if len(modes) == 1 else ("MULTIPLE" if modes else "NON_RENSEIGNE")
+        entree["modes_etablissement_source"] = ";".join(modes)
         entree["nb_regions_gadm"] = len(entree["regions"])
         entree["regions_gadm"] = ";".join(sorted(entree["regions"].values()))
         entree.pop("regions")
@@ -418,6 +428,7 @@ def ecrire_sorties(sortie: Path, resultat: dict[str, Any], rapport: dict[str, An
         "historique": resultat["historique"],
         "sources": resultat["sources"],
         "indicateurs": resultat["indicateurs"],
+        "qualite": resultat["qualite"],
     }
     for cle, lignes in tables.items():
         nom = FICHIERS[cle]
