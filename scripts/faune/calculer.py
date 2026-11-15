@@ -29,7 +29,7 @@ from typing import Any, Iterable
 API = "https://api.gbif.org/v1"
 API_DEMANDE = API + "/occurrence/download/request"
 CHECKLIST_COL = "7ddf754f-d193-4cc9-b351-99906754a03b"
-SOURCE_URL = "https://www.gbif.org/occurrence/search?country=DZ&taxon_key=1"
+SOURCE_URL = "https://www.gbif.org/occurrence/search?country=DZ"
 DOC_URL = "https://techdocs.gbif.org/en/data-use/api-downloads"
 LICENCES = ("CC0_1_0", "CC_BY_4_0")
 AGENT = "data-dz-faune-algerie/1.0 (+https://github.com/new-algeria/api-dz-backend)"
@@ -190,10 +190,11 @@ def agreger_occurrences(lignes: Iterable[dict[str, str]]) -> dict[str, Any]:
             qualite["statut_inattendu"] += 1
 
         rang = _texte(ligne, "taxonRank").upper()
-        cle_espece = _texte(ligne, "speciesKey")
+        cle_espece = _texte(ligne, "acceptedTaxonKey", "speciesKey") if rang == "SPECIES" else _texte(ligne, "speciesKey")
         if not cle_espece and rang == "SPECIES":
-            cle_espece = _texte(ligne, "acceptedTaxonKey", "taxonKey")
-        nom = _texte(ligne, "acceptedScientificName", "species", "scientificName")
+            cle_espece = _texte(ligne, "taxonKey")
+        nom = _texte(ligne, "species", "acceptedScientificName", "scientificName")
+        nom_complet = _texte(ligne, "acceptedScientificName", "scientificName") or nom
         if not cle_espece or not nom:
             qualite["sans_espece_identifiee"] += 1
             cle_espece = ""
@@ -203,7 +204,8 @@ def agreger_occurrences(lignes: Iterable[dict[str, str]]) -> dict[str, Any]:
                 entree = {
                     "espece_key": cle_espece,
                     "nom_scientifique": nom,
-                    "nom_court": _texte(ligne, "species") or nom,
+                    "nom_complet_gbif": nom_complet,
+                    "nom_court": nom,
                     "embranchement": _texte(ligne, "phylum"),
                     "classe": _texte(ligne, "class"),
                     "ordre": _texte(ligne, "order"),
