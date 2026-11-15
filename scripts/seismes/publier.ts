@@ -158,9 +158,9 @@ const champs = {
   },
   description: {
     fr:
-      "Événements sismiques de magnitude au moins 2,5 dont l’épicentre est situé à l’intérieur des 69 wilayas, issus du catalogue USGS NEIC/PDE (catalogue us, contributeur us) depuis 1973. Carte des épicentres, profondeur et magnitude, série annuelle et décompte par wilaya. Sous-ensemble du catalogue mondial, non exhaustif par rapport au CRAAG.",
+      "Événements sismiques de magnitude au moins 2,5 dont l’épicentre est situé à l’intérieur des 69 wilayas, issus du catalogue USGS NEIC/PDE (catalogue us, contributeur us) depuis 1973 (dernier événement observé : " + dateDerniere + "). Carte des épicentres, profondeur et magnitude, série annuelle et décompte par wilaya. Sous-ensemble du catalogue mondial, non exhaustif par rapport au CRAAG.",
     en:
-      "Earthquakes of magnitude 2.5 or greater with epicentres inside Algeria’s 69 wilayas, from the USGS NEIC/PDE catalogue (catalog us, contributor us) since 1973. Epicentre map, depth and magnitude, annual time series and counts by wilaya. A subset of the global catalogue, not a complete CRAAG inventory.",
+      "Earthquakes of magnitude 2.5 or greater with epicentres inside Algeria’s 69 wilayas, from the USGS NEIC/PDE catalogue (catalog us, contributor us) since 1973 (latest event observed: " + dateDerniere + "). Epicentre map, depth and magnitude, annual time series and counts by wilaya. A subset of the global catalogue, not a complete CRAAG inventory.",
     ar:
       "أحداث زلزالية بقوة 2.5 أو أكثر تقع مراكزها داخل الولايات الجزائرية الـ69، من فهرس USGS NEIC/PDE (catalog us, contributor us) منذ 1973. خريطة المراكز والأعماق والقوة وسلسلة سنوية وعدد حسب الولاية. مجموعة فرعية من الفهرس العالمي وليست فهرسًا كاملًا لبيانات CRAAG.",
   },
@@ -172,7 +172,7 @@ const champs = {
     "### Périmètre de collecte",
     "",
     "- Catalogue FDSN : catalog=us ; contributeur : contributor=us (USGS National Earthquake Information Center / PDE). Le catalogue ComCat global agrège plusieurs réseaux ; cette extraction n’interroge pas les contributions d’autres organismes.",
-    "- Période demandée : du 1er janvier 1973 à la date du dernier calcul UTC.",
+    "- Période demandée : du 1er janvier 1973 à la date du dernier calcul UTC. Événements réellement observés dans cette extraction : " + datePremiere + " à " + dateDerniere + ". La dernière date d’événement peut être sensiblement antérieure à la collecte.",
     "- Seuil : magnitude supérieure ou égale à 2,5. Les événements plus faibles ne sont pas collectés.",
     "- L’emprise rectangulaire est calculée depuis les contours des 69 wilayas ; chaque point est ensuite vérifié par un test point-dans-polygone. Les épicentres en mer ou hors des contours terrestres sont écartés.",
     "- Un événement est identifié par son identifiant USGS. Les réponses des périodes éventuellement découpées sont dédupliquées.",
@@ -230,6 +230,8 @@ const champs = {
   infos_source: {
     premiere_annee_observee: rapport.premiere_annee_observee,
     derniere_annee_observee: rapport.derniere_annee_observee,
+    premiere_date_observee_utc: rapport.premiere_date_observee_utc,
+    derniere_date_observee_utc: rapport.derniere_date_observee_utc,
     nb_series: 69,
     nb_wilayas: 69,
     nb_seismes: rapport.nb_seismes_algerie,
