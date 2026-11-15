@@ -95,6 +95,17 @@ class FauneGbifTests(unittest.TestCase):
         self.assertEqual(espece["statut_iucn"], "MULTIPLE")
         self.assertEqual(espece["statuts_iucn_source"], "EN;VU")
 
+    def test_signale_les_taxons_connus_uniquement_par_des_fossiles(self):
+        resultat = agreger_occurrences([
+            ligne(basisOfRecord="FOSSIL_SPECIMEN"),
+            ligne(basisOfRecord="FOSSIL_SPECIMEN", year="2019"),
+        ])
+        espece = resultat["especes"][0]
+        self.assertTrue(espece["fossile_uniquement"])
+        self.assertEqual(espece["nb_occurrences_fossiles"], 2)
+        self.assertEqual(espece["nb_occurrences_non_fossiles"], 0)
+        self.assertEqual(espece["types_enregistrement"], "FOSSIL_SPECIMEN")
+
     def test_les_donnees_sans_coordonnees_restent_dans_le_catalogue(self):
         resultat = agreger_occurrences([
             ligne(hasCoordinate="false", level1Gid="", level1Name=""),
