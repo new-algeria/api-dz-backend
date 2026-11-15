@@ -80,7 +80,7 @@ class FauneGbifTests(unittest.TestCase):
 
         adrar = next(r for r in resultat["regions"] if r["region_gadm"] == "Adrar")
         self.assertEqual(adrar["nb_especes_distinctes"], 1)
-        self.assertEqual(adrar["nb_occurrences_geolocalisees"], 1)
+        self.assertEqual(adrar["nb_occurrences_geolocalisees"], 2)
 
     def test_ne_force_pas_un_statut_iucn_qui_varie_entre_occurrences(self):
         resultat = agreger_occurrences([
