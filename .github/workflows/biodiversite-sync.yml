@@ -1,0 +1,103 @@
+# Synchronisation des statistiques de biodiversité algérienne depuis les facettes GBIF.
+name: Synchro biodiversite
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [relecture/biodiversite]
+  schedule:
+    - cron: "17 7 1,15 * *"
+  workflow_dispatch:
+    inputs:
+      essai:
+        description: "Essai : calculer et rapporter, ne rien publier"
+        type: boolean
+        default: true
+      forcer:
+        description: "Forcer : ignorer l'échéance"
+        type: boolean
+        default: false
+
+concurrency:
+  group: biodiversite-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  controle-branche:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SYNCHRO_ESSAI: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Vérifier les types
+        run: npm run typecheck
+      - name: Tester
+        run: npm test
+      - name: Valider le workflow
+        run: |
+          python -m pip install --disable-pip-version-check actionlint-py
+          actionlint .github/workflows/biodiversite-sync.yml
+      - name: Calculer les statistiques GBIF
+        id: calcul
+        run: npx tsx scripts/biodiversite/calculer.ts --sortie "$RUNNER_TEMP/biodiversite/sortie"
+      - name: Vérifier la publication sans écrire
+        run: npx tsx scripts/biodiversite/publier.ts --essai --sortie "$RUNNER_TEMP/biodiversite/sortie"
+      - name: Conserver les fichiers calculés
+        if: always() && steps.calcul.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: biodiversite-algerie-sortie
+          path: \${{ runner.temp }}/biodiversite/sortie/
+          if-no-files-found: error
+          retention-days: 14
+
+  synchro:
+    if: github.event_name != 'push' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      API_URL: \${{ secrets.API_URL }}
+      CLE_SYNCHRO: \${{ secrets.CLE_SYNCHRO }}
+      SYNCHRO_ESSAI: \${{ inputs.essai }}
+      SYNCHRO_FORCER: \${{ inputs.forcer }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Début de l'exécution
+        run: echo "SYNCHRO_DEBUT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+      - name: Vérifier l'échéance
+        id: echeance
+        run: npx tsx scripts/biodiversite/publier.ts --verifier
+      - name: Calculer les statistiques GBIF
+        id: calcul
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/biodiversite/calculer.ts --sortie "$RUNNER_TEMP/biodiversite/sortie"
+      - name: Publier et rapporter
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/biodiversite/publier.ts --sortie "$RUNNER_TEMP/biodiversite/sortie"
+      - name: Conserver les fichiers calculés
+        if: always() && steps.calcul.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: biodiversite-algerie-sortie
+          path: \${{ runner.temp }}/biodiversite/sortie/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Rapporter l'échec
+        if: failure() && steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/biodiversite/publier.ts --echec "Échec de la collecte GBIF ou de la publication, voir les journaux de la GitHub Action."
