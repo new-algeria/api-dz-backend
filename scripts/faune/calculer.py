@@ -56,7 +56,7 @@ def construire_requete(email: str) -> dict[str, Any]:
     """Périmètre inclusif pour l'inventaire, sans imposer de coordonnées."""
     return {
         "notificationAddresses": [email],
-        "sendNotification": False,
+        "sendNotification": True,
         "format": "DWCA",
         "checklistKey": CHECKLIST_COL,
         "predicate": {
@@ -85,6 +85,18 @@ def _requete_http(url: str, *, username: str | None = None, password: str | None
             return reponse.read()
     except urllib.error.HTTPError as erreur:
         detail = erreur.read(2000).decode("utf-8", errors="replace")
+        if erreur.code == 401 and url == API_DEMANDE:
+            raise RuntimeError(
+                "GBIF HTTP 401 : identifiants refusés. GBIF_USERNAME doit être le nom "
+                "d'utilisateur GBIF (pas l'adresse e-mail) et GBIF_PASSWORD le mot de "
+                "passe du compte GBIF. Vérifie aussi que les secrets GitHub sont ceux "
+                "du même compte et qu'ils ne contiennent pas de guillemets ajoutés."
+            ) from erreur
+        if erreur.code == 403 and url == API_DEMANDE:
+            raise RuntimeError(
+                "GBIF HTTP 403 : le compte authentifié n'est pas autorisé à créer ce "
+                "téléchargement. Vérifie le compte GBIF et ses permissions."
+            ) from erreur
         raise RuntimeError(f"GBIF HTTP {erreur.code} sur {url}: {detail}") from erreur
     except urllib.error.URLError as erreur:
         raise RuntimeError(f"Connexion GBIF impossible sur {url}: {erreur}") from erreur
@@ -545,6 +557,12 @@ def main() -> None:
         raise RuntimeError(
             "Secrets GBIF manquants : configure GBIF_USERNAME, GBIF_PASSWORD et GBIF_EMAIL "
             "dans les secrets du dépôt GitHub (compte GBIF personnel requis)."
+        )
+    if "@" in username:
+        raise RuntimeError(
+            "GBIF_USERNAME contient un caractère @ et ressemble à une adresse e-mail. "
+            "GBIF exige le nom d'utilisateur du compte (identifiant de connexion), pas "
+            "l'adresse e-mail. Corrige le secret GBIF_USERNAME dans GitHub Actions."
         )
 
     args.cache.mkdir(parents=True, exist_ok=True)
