@@ -228,7 +228,7 @@ const champs = {
   infos_source: {
     cle_telechargement: rapport.cle_telechargement,
     doi: rapport.doi,
-    citation_gbif: rapport.citation_gbif,
+    citation_gbif: typeof rapport.citation_gbif === "string" ? rapport.citation_gbif.slice(0, 5000) : null,
     total_enregistrements_telechargement: rapport.total_enregistrements_telechargement,
     occurrences_animales: rapport.occurrences_animales,
     nb_especes: rapport.nb_especes,
@@ -254,7 +254,6 @@ if (essai || !cle) {
 const { creee } = await api.enregistrerDonnee(SLUG, { ...champs, statut: "brouillon" });
 console.log(creee ? "Donnée créée en brouillon." : "Donnée existante mise à jour (statut inchangé).");
 
-const noms = GROUPES.map((groupe) => groupe.nom);
 const formats = ["json", "csv"] as const;
 const actuels = creee ? new Map<string, string | null>() : new Map(
   (await Promise.all(GROUPES.flatMap((groupe) =>
