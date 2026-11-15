@@ -1,0 +1,61 @@
+name: Synchro prix alimentaires par wilaya
+
+on:
+  schedule:
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+    inputs:
+      essai:
+        description: "Essai : collecter et contrôler, ne rien publier"
+        type: boolean
+        default: true
+      forcer:
+        description: "Forcer : ignorer l'échéance"
+        type: boolean
+        default: false
+
+concurrency:
+  group: prix-alimentaires-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  synchro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      API_URL: ${{ secrets.API_URL }}
+      CLE_SYNCHRO: ${{ secrets.CLE_SYNCHRO }}
+      SYNCHRO_ESSAI: ${{ inputs.essai }}
+      SYNCHRO_FORCER: ${{ inputs.forcer }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Début de l'exécution
+        run: echo "SYNCHRO_DEBUT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+      - name: Échéance
+        id: echeance
+        run: npx tsx scripts/prix-alimentaires/publier.ts --verifier
+      - name: Collecter les relevés publics
+        id: calcul
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/prix-alimentaires/collecter.ts --sortie "$RUNNER_TEMP/prix-alimentaires/sortie"
+      - name: Publier et rapporter
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/prix-alimentaires/publier.ts --sortie "$RUNNER_TEMP/prix-alimentaires/sortie"
+      - name: Conserver les sorties
+        if: always() && steps.calcul.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: prix-alimentaires-${{ github.run_id }}
+          path: ${{ runner.temp }}/prix-alimentaires/sortie/
+          retention-days: 14
+      - name: Rapporter l'échec
+        if: failure() && steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/prix-alimentaires/publier.ts --echec "Échec collecte ou publication, voir les journaux."
