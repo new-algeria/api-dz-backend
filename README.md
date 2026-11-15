@@ -227,3 +227,17 @@ Au premier passage d'un nouveau membre connecté, data-dz et New Algeria appelle
    `(http.host eq "files.data-dz.com" and not starts_with(http.request.uri.path, "/web-assets/"))` → **Block**.
    À faire **après** la mise en ligne du site qui passe par l'API. L'API, elle, passe par l'endpoint S3 et n'est pas concernée.
 6. Supabase : appliquer la migration `20261025000009_illustrations.sql` du dépôt data-dz (colonne `datasets.illustration_url`).
+
+
+## Synchronisation des séismes en Algérie (scripts/seismes/)
+
+La donnée seismes-algerie interroge le catalogue USGS NEIC/PDE avec catalog=us et contributor=us, depuis le 1er janvier 1973, avec une magnitude minimale de 2,5. Elle ne mélange pas les contributions d'autres réseaux ComCat. Les événements sont filtrés par point-dans-polygone sur les 69 contours GeoAlgeria.
+
+Fichiers :
+- seismes-usgs (JSON et CSV) et seismes-annuels (JSON et CSV) : source NEIC/PDE, CC0-1.0.
+- seismes-algerie (JSON, CSV et GeoJSON) : événements enrichis de leur wilaya ; seismes-wilayas (JSON et CSV) : 69 comptes par année. Fichiers dérivés des contours GeoAlgeria, ODbL-1.0.
+- rapport.json : périodes, nombres par année et wilaya, extrêmes et contrôles.
+
+Le script calcule toute la période à chaque passage pour intégrer les révisions de paramètres. Si l'API atteint sa limite de 20 000 lignes, les plages sont automatiquement découpées. Le workflow est quotidien et peut aussi être lancé manuellement en essai. Aucune clé USGS n'est requise.
+
+Limites : couverture NEIC/PDE non exhaustive par rapport au CRAAG ; événements de magnitude inférieure à 2,5 exclus ; complétude variable selon les époques et les zones ; année courante partielle. Les catalogues historiques du CRAAG ne sont pas redistribués faute de licence ouverte affichée. Voir scripts/seismes/README.md.

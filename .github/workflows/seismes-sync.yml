@@ -1,0 +1,127 @@
+
+# Synchronisation quotidienne du catalogue USGS NEIC/PDE pour les 69 wilayas.
+# Aucun secret de données externe : l'API FDSN USGS est publique.
+# Secrets de publication : API_URL et CLE_SYNCHRO.
+name: Synchro seismes
+
+on:
+  push:
+    branches: [relecture/seismes]
+  schedule:
+    - cron: "37 6 * * *"
+  workflow_dispatch:
+    inputs:
+      essai:
+        description: "Essai : calculer et rapporter, ne rien publier"
+        type: boolean
+        default: true
+      forcer:
+        description: "Forcer : ignorer l'échéance"
+        type: boolean
+        default: false
+
+concurrency:
+  group: seismes-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  controle-branche:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      API_URL: ${{ secrets.API_URL }}
+      SYNCHRO_ESSAI: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Vérifier les types
+        run: npm run typecheck
+
+      - name: Tester
+        run: npm test
+
+      - name: Valider le workflow
+        run: |
+          python -m pip install --disable-pip-version-check actionlint-py
+          actionlint .github/workflows/seismes-sync.yml
+
+      - name: Calculer les séismes en essai
+        id: calcul
+        run: |
+          npx tsx scripts/seismes/calculer.ts \
+            --cache "$RUNNER_TEMP/seismes/cache" \
+            --sortie "$RUNNER_TEMP/seismes/sortie"
+
+      - name: Vérifier la publication sans écrire
+        run: npx tsx scripts/seismes/publier.ts --essai --sortie "$RUNNER_TEMP/seismes/sortie"
+
+      - name: Conserver les fichiers calculés
+        if: always() && steps.calcul.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: seismes-sortie
+          path: ${{ runner.temp }}/seismes/sortie/
+          if-no-files-found: error
+          retention-days: 14
+
+  synchro:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      API_URL: ${{ secrets.API_URL }}
+      CLE_SYNCHRO: ${{ secrets.CLE_SYNCHRO }}
+      SYNCHRO_ESSAI: ${{ inputs.essai }}
+      SYNCHRO_FORCER: ${{ inputs.forcer }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Début de l'exécution
+        run: echo "SYNCHRO_DEBUT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Échéance
+        id: echeance
+        run: npx tsx scripts/seismes/publier.ts --verifier
+
+      - name: Calculer les séismes
+        id: calcul
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: |
+          npx tsx scripts/seismes/calculer.ts \
+            --cache "$RUNNER_TEMP/seismes/cache" \
+            --sortie "$RUNNER_TEMP/seismes/sortie"
+
+      - name: Publier et rapporter
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/seismes/publier.ts --sortie "$RUNNER_TEMP/seismes/sortie"
+
+      - name: Conserver les fichiers calculés
+        if: always() && steps.calcul.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: seismes-sortie
+          path: ${{ runner.temp }}/seismes/sortie/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Rapporter l'échec
+        if: failure() && steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/seismes/publier.ts --echec "Échec de la GitHub Action (calcul ou publication), voir les journaux."
