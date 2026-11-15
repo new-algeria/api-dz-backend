@@ -190,11 +190,12 @@ def agreger_occurrences(lignes: Iterable[dict[str, str]]) -> dict[str, Any]:
             qualite["statut_inattendu"] += 1
 
         rang = _texte(ligne, "taxonRank").upper()
-        cle_espece = _texte(ligne, "acceptedTaxonKey", "speciesKey") if rang == "SPECIES" else _texte(ligne, "speciesKey")
-        if not cle_espece and rang == "SPECIES":
-            cle_espece = _texte(ligne, "taxonKey")
-        nom = _texte(ligne, "species", "acceptedScientificName", "scientificName")
-        nom_complet = _texte(ligne, "acceptedScientificName", "scientificName") or nom
+        # speciesKey suit le référentiel sélectionné par checklistKey (Catalogue of Life).
+        # acceptedTaxonKey peut désigner le taxon accepté dans le Backbone et ne doit pas
+        # remplacer la clé espèce du référentiel utilisé pour grouper le catalogue.
+        cle_espece = _texte(ligne, "speciesKey")
+        nom_complet = _texte(ligne, "acceptedScientificName", "scientificName", "species")
+        nom = nom_complet
         if not cle_espece or not nom:
             qualite["sans_espece_identifiee"] += 1
             cle_espece = ""
