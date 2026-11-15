@@ -33,8 +33,8 @@ jobs:
     timeout-minutes: 180
     env:
       SYNCHRO_ESSAI: "true"
-      ADS_API_KEY: \${{ secrets.ADS_API_KEY || secrets.CDS_API_KEY }}
-      API_URL: \${{ secrets.API_URL }}
+      ADS_API_KEY: ${{ secrets.ADS_API_KEY || secrets.CDS_API_KEY }}
+      API_URL: ${{ secrets.API_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -65,10 +65,10 @@ jobs:
         if: env.ADS_API_KEY != ''
         uses: actions/cache/restore@v4
         with:
-          path: \${{ runner.temp }}/pollution-atmospherique/cache
-          key: pollution-cams-eac4-\${{ runner.os }}-\${{ github.run_id }}
+          path: ${{ runner.temp }}/pollution-atmospherique/cache
+          key: pollution-cams-eac4-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
-            pollution-cams-eac4-\${{ runner.os }}-
+            pollution-cams-eac4-${{ runner.os }}-
       - name: Collecter les données CAMS réelles
         id: calcul
         if: env.ADS_API_KEY != ''
@@ -84,7 +84,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pollution-atmospherique-cams-sortie
-          path: \${{ runner.temp }}/pollution-atmospherique/sortie/
+          path: ${{ runner.temp }}/pollution-atmospherique/sortie/
           if-no-files-found: error
           retention-days: 14
       - name: Indiquer l'accès ADS manquant
@@ -96,11 +96,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      API_URL: \${{ secrets.API_URL }}
-      CLE_SYNCHRO: \${{ secrets.CLE_SYNCHRO }}
-      ADS_API_KEY: \${{ secrets.ADS_API_KEY || secrets.CDS_API_KEY }}
-      SYNCHRO_ESSAI: \${{ inputs.essai }}
-      SYNCHRO_FORCER: \${{ inputs.forcer }}
+      API_URL: ${{ secrets.API_URL }}
+      CLE_SYNCHRO: ${{ secrets.CLE_SYNCHRO }}
+      ADS_API_KEY: ${{ secrets.ADS_API_KEY || secrets.CDS_API_KEY }}
+      SYNCHRO_ESSAI: ${{ inputs.essai }}
+      SYNCHRO_FORCER: ${{ inputs.forcer }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -134,10 +134,10 @@ jobs:
         if: steps.echeance.outputs.a_faire == 'true'
         uses: actions/cache/restore@v4
         with:
-          path: \${{ runner.temp }}/pollution-atmospherique/cache
-          key: pollution-cams-eac4-\${{ runner.os }}-\${{ github.run_id }}
+          path: ${{ runner.temp }}/pollution-atmospherique/cache
+          key: pollution-cams-eac4-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
-            pollution-cams-eac4-\${{ runner.os }}-
+            pollution-cams-eac4-${{ runner.os }}-
       - name: Collecter et calculer les champs CAMS
         id: calcul
         if: steps.echeance.outputs.a_faire == 'true'
@@ -155,8 +155,8 @@ jobs:
         if: always() && steps.echeance.outputs.a_faire == 'true'
         uses: actions/cache/save@v4
         with:
-          path: \${{ runner.temp }}/pollution-atmospherique/cache
-          key: pollution-cams-eac4-\${{ runner.os }}-\${{ github.run_id }}
+          path: ${{ runner.temp }}/pollution-atmospherique/cache
+          key: pollution-cams-eac4-${{ runner.os }}-${{ github.run_id }}
       - name: Publier et rapporter
         if: steps.echeance.outputs.a_faire == 'true'
         run: npx tsx scripts/pollution_atmospherique/publier.ts --sortie "$RUNNER_TEMP/pollution-atmospherique/sortie"
@@ -165,7 +165,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pollution-atmospherique-cams-sortie
-          path: \${{ runner.temp }}/pollution-atmospherique/sortie/
+          path: ${{ runner.temp }}/pollution-atmospherique/sortie/
           if-no-files-found: error
           retention-days: 14
       - name: Rapporter l'échec
