@@ -44,7 +44,8 @@ Les colonnes du fichier principal sont en français et en `snake_case`. Les libe
 ## Interprétation et limites
 
 - Il s'agit de séries **annuelles nationales**. Pas de ventilation par wilaya, ni de données horaires, de puissance de pointe, de coupures ou de consommation individuelle.
-- La ligne `Demand` est la demande telle que définie et publiée par Ember ; elle ne doit pas être assimilée sans précaution aux seules ventes facturées aux ménages.
+- Ember calcule `Demand` comme la production brute + les importations nettes et la valide lorsque possible avec des demandes nationales directement publiées. La production brute n'intègre pas les pertes de transport et distribution ; la demande Ember tend donc à être supérieure à la demande des utilisateurs finaux. Ne pas la confondre avec les seules ventes facturées aux ménages.
+- `Net imports` = importations moins exportations : une valeur négative signifie que le pays est exportateur net. Pour l'Algérie, la valeur est -2,52 TWh en 2024.
 - `Capacity (GW)` est une capacité de puissance installée, distincte de l'énergie produite en TWh.
 - Les agrégats `Clean`, `Fossil`, `Renewables` et `Total generation` peuvent recouper les sources élémentaires. Le champ `source_agregee` permet de les exclure des sommes de filières.
 - Les dernières années peuvent être provisoires ou estimées selon la méthodologie d'Ember. Les données mondiales n'ont pas toutes la même couverture temporelle ; seule la période réellement disponible pour DZA est conservée.
