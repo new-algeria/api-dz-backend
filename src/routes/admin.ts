@@ -298,7 +298,7 @@ routesAdmin.openapi(
     tags: ["Administration"],
     summary: "Publier une nouvelle version à partir des fichiers envoyés",
     description:
-      "Chaque fichier est relu et validé. Le fichier principal donne le nombre de lignes ou d'événements, les colonnes et l'aperçu. " +
+      "Chaque fichier est relu et son empreinte calculée ; le fichier principal est analysé pour le nombre de lignes ou d'événements, les colonnes et l'aperçu. " +
       "`source_slug` différent de la source de la donnée (ex. `openstreetmap` sur une donnée GeoAlgeria) : les fichiers envoyés remplacent " +
       "seulement ceux de cette source, les autres sont gardés ; ils ne sont pas principaux et portent `licence_code`.",
     security: securite,
