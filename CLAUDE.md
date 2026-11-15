@@ -30,3 +30,6 @@ Node 22 obligatoire, y compris en local : sous Node 20, supabase-js plante à la
 
 ## Tests (à étendre)
 Vitest couvre la conversion, la validation des paramètres, la limite de débit et quelques erreurs. À prévoir : routes publiques et admin avec un Supabase et un R2 simulés (liste, fiche, `/data`, `/download`, création, version, illustration), et un contrôle du schéma de la base cible (chaque colonne lue par l'API existe) avant chaque déploiement.
+
+
+- **Synchronisation électricité Ember** : `scripts/electricite/` extrait les séries annuelles du CSV mondial Ember pour DZA, garde les lignes par filière et les agrégats marqués, construit une synthèse par année et publie en JSON/CSV. Licence CC BY 4.0, attribution Ember ; workflow `.github/workflows/electricite-sync.yml`, ligne `electricite` de `synchronisations` et migration data-dz `20261115000027`. La période disponible est détectée, sans extrapolation. Voir le README du script.

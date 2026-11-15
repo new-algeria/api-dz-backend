@@ -241,3 +241,15 @@ Fichiers :
 Le script calcule toute la période à chaque passage pour intégrer les révisions de paramètres. Si l'API atteint sa limite de 20 000 lignes, les plages sont automatiquement découpées. Le workflow est quotidien et peut aussi être lancé manuellement en essai. Aucune clé USGS n'est requise.
 
 Limites : couverture NEIC/PDE non exhaustive par rapport au CRAAG ; événements de magnitude inférieure à 2,5 exclus ; complétude variable selon les époques et les zones ; année courante partielle. Les catalogues historiques du CRAAG ne sont pas redistribués faute de licence ouverte affichée. Voir scripts/seismes/README.md.
+
+
+
+## Synchronisation de l'électricité en Algérie (scripts/electricite/)
+
+La donnée `electricite-algerie` extrait les lignes DZA du fichier mondial annuel « Yearly Electricity Data » d'Ember (CC BY 4.0) : production totale et par filière, demande, échanges nets, capacité installée, émissions et intensité. Le pipeline conserve les agrégats en les signalant (`source_agregee`) afin d'éviter les doubles comptes. La plage temporelle est détectée dans le fichier source et peut différer de celle des autres pays ; elle n'est pas extrapolée.
+
+- Fichiers : `electricite-algerie` (détail par année/source) et `electricite-algerie-indicateurs` (synthèse par année), chacun en JSON et CSV ; `rapport.json` contient l'empreinte source et les contrôles.
+- Source : https://ember-energy.org/data/yearly-electricity-data/ ; fichier global CSV, mise à jour environ deux fois par mois, licence CC BY 4.0.
+- Workflow : `.github/workflows/electricite-sync.yml`, lancé deux fois par mois et réglé via la ligne `electricite` de `synchronisations`.
+- Migration data-dz : `20261115000027_synchro_electricite_ember.sql` (source, licence et ligne de synchronisation).
+- Limites : série annuelle nationale sans ventilation par wilaya ni mesure horaire ; la demande est celle publiée par Ember, et les dernières années peuvent être révisées ou estimées. Voir `scripts/electricite/README.md`.
