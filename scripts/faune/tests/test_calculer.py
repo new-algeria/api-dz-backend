@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from calculer import agreger_occurrences, construire_requete  # noqa: E402
+from calculer import agreger_occurrences, construire_requete, valider_identifiant_gbif  # noqa: E402
 
 
 def ligne(**modifications):
@@ -42,11 +42,17 @@ class FauneGbifTests(unittest.TestCase):
         requete = construire_requete("faune@example.org")
         predicates = requete["predicate"]["predicates"]
         self.assertEqual(requete["format"], "DWCA")
+        self.assertTrue(requete["sendNotification"])
         self.assertTrue(requete["checklistKey"])
         self.assertEqual(predicates[0], {"type": "equals", "key": "COUNTRY", "value": "DZ"})
         self.assertEqual(predicates[1], {"type": "equals", "key": "OCCURRENCE_STATUS", "value": "PRESENT"})
         self.assertEqual(predicates[2]["key"], "LICENSE")
         self.assertNotIn("HAS_COORDINATE", str(requete))
+
+    def test_refuse_l_adresse_email_comme_identifiant_gbif(self):
+        with self.assertRaisesRegex(ValueError, "pas l'adresse e-mail"):
+            valider_identifiant_gbif("utilisateur@example.org")
+        valider_identifiant_gbif("identifiant-gbif")
 
     def test_agrege_les_observations_par_espece_sans_exposer_les_occurrences(self):
         lignes = [
