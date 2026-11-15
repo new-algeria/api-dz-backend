@@ -263,11 +263,11 @@ def agreger_occurrences(lignes: Iterable[dict[str, str]]) -> dict[str, Any]:
         coordonnees_valides = _booleen(_texte(ligne, "hasCoordinate")) and not _booleen(_texte(ligne, "hasGeospatialIssues"))
         if coordonnees_valides:
             total_geolocalisees_valides += 1
+            if cle_espece:
+                especes[cle_espece]["nb_occurrences_geolocalisees"] += 1
             gid = _texte(ligne, "level1Gid")
             nom_region = _texte(ligne, "level1Name")
             if gid and nom_region:
-                if cle_espece:
-                    especes[cle_espece]["nb_occurrences_geolocalisees"] += 1
                 region = regions.setdefault(gid, {
                     "region_gadm_key": gid, "region_gadm": nom_region,
                     "occurrences": 0, "especes": set(), "familles": set(),
