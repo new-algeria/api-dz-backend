@@ -6,7 +6,7 @@ name: Synchro sécheresse
 
 on:
   push:
-    branches: [feat/secheresse-era5-land, fix/secheresse-humidite-negative-noise]
+    branches: [feat/secheresse-era5-land, fix/secheresse-humidite-negative-noise, fix/secheresse-correction-precip-diagnostic]
   schedule:
     - cron: "17 7 10 * *"
   workflow_dispatch:
@@ -100,6 +100,14 @@ jobs:
           mkdir -p "$HOME"
           printf 'url: https://cds.climate.copernicus.eu/api\nkey: %s\n' "$CDS_API_KEY" > "$HOME/.cdsapirc"
           chmod 600 "$HOME/.cdsapirc"
+      - name: Restaurer le cache des NetCDF ERA5-Land
+        if: steps.echeance.outputs.a_faire == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/secheresse/cache
+          key: secheresse-era5-land-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            secheresse-era5-land-${{ runner.os }}-
       - name: Calculer les indicateurs ERA5-Land
         id: calcul
         if: steps.echeance.outputs.a_faire == 'true'
@@ -107,6 +115,20 @@ jobs:
           python scripts/secheresse/calculer.py \
             --cache "$RUNNER_TEMP/secheresse/cache" \
             --sortie "$RUNNER_TEMP/secheresse/sortie"
+      - name: Sauvegarder le cache des NetCDF ERA5-Land
+        if: always() && steps.echeance.outputs.a_faire == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/secheresse/cache
+          key: secheresse-era5-land-${{ runner.os }}-${{ github.run_id }}
+      - name: Conserver les NetCDF correctifs en cas d'échec
+        if: failure() && steps.echeance.outputs.a_faire == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: secheresse-era5-land-diagnostic-${{ github.run_id }}
+          path: ${{ runner.temp }}/secheresse/cache/era5-land-precipitation-corrective-*.nc
+          if-no-files-found: warn
+          retention-days: 7
       - name: Publier et rapporter
         if: steps.echeance.outputs.a_faire == 'true'
         run: npx tsx scripts/secheresse/publier.ts --sortie "$RUNNER_TEMP/secheresse/sortie"
