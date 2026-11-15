@@ -29,6 +29,16 @@ def test_monthly_precipitation_conversion_uses_calendar_days():
 
 def test_root_zone_soil_water_is_depth_weighted():
     assert calculer.humidite_racine_ponderee(0.1, 0.2, 0.3) == pytest.approx((7 * .1 + 21 * .2 + 72 * .3) / 100)
+    # Le bruit négatif admis par le contrôle de qualité est normalisé à zéro.
+    assert calculer.normaliser_humidite_sol(-0.0005) == (0.0, True)
+    assert calculer.humidite_racine_ponderee(-0.0005, 0.2, 0.3) == pytest.approx((21 * .2 + 72 * .3) / 100)
+    assert calculer.normaliser_humidite_sol(0.0) == (0.0, False)
+    assert calculer.normaliser_humidite_sol(0.25) == (0.25, False)
+    # Les valeurs réellement hors plage restent bloquantes.
+    with pytest.raises(ValueError):
+        calculer.normaliser_humidite_sol(-0.0011)
+    with pytest.raises(ValueError):
+        calculer.normaliser_humidite_sol(1.1)
     with pytest.raises(ValueError):
         calculer.humidite_racine_ponderee(1.1, .2, .3)
 

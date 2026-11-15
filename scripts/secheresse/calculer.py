@@ -87,12 +87,28 @@ def precipitation_mm_mois(taux_m_par_jour: float, annee: int, mois: int) -> floa
     return float(taux_m_par_jour * 1000.0 * calendar.monthrange(annee, mois)[1])
 
 
+TOLERANCE_HUMIDITE_M3_M3 = 0.001
+
+
+def normaliser_humidite_sol(valeur: float) -> tuple[float, bool]:
+    """
+    Valide l'humidité volumique (m³/m³).
+    Les minuscules valeurs négatives jusqu'à -0,001 sont du bruit numérique toléré
+    par le contrôle qualité initial et sont ramenées à zéro. Les valeurs hors
+    tolérance ou supérieures à 1 restent bloquantes.
+    Retourne (valeur_normalisée, correction_appliquée).
+    """
+    if not np.isfinite(valeur) or valeur < -TOLERANCE_HUMIDITE_M3_M3 or valeur > 1:
+        raise ValueError(f"Humidité volumique du sol hors plage physique : {valeur!r} m³/m³.")
+    if valeur < 0:
+        return 0.0, True
+    return float(valeur), False
+
+
 def humidite_racine_ponderee(sm1: float, sm2: float, sm3: float) -> float:
     """Moyenne volumique pondérée par l'épaisseur des couches 0–7, 7–28 et 28–100 cm."""
-    valeurs = (sm1, sm2, sm3)
-    if any(not np.isfinite(v) or v < 0 or v > 1 for v in valeurs):
-        raise ValueError("Humidité volumique du sol hors de [0, 1].")
-    return float((7 * sm1 + 21 * sm2 + 72 * sm3) / 100)
+    valeurs = tuple(normaliser_humidite_sol(v)[0] for v in (sm1, sm2, sm3))
+    return float((7 * valeurs[0] + 21 * valeurs[1] + 72 * valeurs[2]) / 100)
 
 
 def month_string(index: int) -> str:
@@ -268,6 +284,7 @@ def agreger_netcdf(path: Path, features: list[dict[str, Any]], noms: dict[int, d
         raise ValueError(f"Le fichier {path.name} contient des mois dupliqués.")
     poids = np.cos(np.deg2rad(latitude))[:, None] * np.ones((1, len(longitude)), dtype=float)
     lignes: list[dict[str, Any]] = []
+    nb_humidites_negatives_corrigees = 0
     for code in range(1, 70):
         selection = mask == code
         poids_cellules = poids[selection]
@@ -287,13 +304,19 @@ def agreger_netcdf(path: Path, features: list[dict[str, Any]], noms: dict[int, d
                 # Une ligne manquante est explicite : on ne fabrique jamais 0 mm ou 0 d'humidité.
                 continue
             annee, numero_mois = map(int, mois.split("-"))
-            sm1 = float(variables["soil_0_7"][indice])
-            sm2 = float(variables["soil_7_28"][indice])
-            sm3 = float(variables["soil_28_100"][indice])
-            sm4 = float(variables["soil_100_289"][indice])
+            valeurs_sol = (
+                float(variables["soil_0_7"][indice]),
+                float(variables["soil_7_28"][indice]),
+                float(variables["soil_28_100"][indice]),
+                float(variables["soil_100_289"][indice]),
+            )
+            try:
+                normalisees = [normaliser_humidite_sol(valeur) for valeur in valeurs_sol]
+            except ValueError as erreur:
+                raise ValueError(f"{erreur} (wilaya {code:02d}, {mois}).") from erreur
+            sm1, sm2, sm3, sm4 = (valeur for valeur, _ in normalisees)
+            nb_humidites_negatives_corrigees += sum(corrigee for _, corrigee in normalisees)
             temp_c = float(variables["temperature"][indice] - 273.15)
-            if any(v < -0.001 or v > 1.0 for v in (sm1, sm2, sm3, sm4)):
-                raise ValueError(f"Humidité du sol hors plage physique plausible ({code:02d}, {mois}).")
             precipitation_mm = precipitation_mm_mois(float(variables["precipitation"][indice]), annee, numero_mois)
             lignes.append({
                 "code_wilaya": f"{code:02d}",
@@ -309,7 +332,7 @@ def agreger_netcdf(path: Path, features: list[dict[str, Any]], noms: dict[int, d
                 "temperature_moyenne_c": round(temp_c, 3),
                 "nb_cellules": nb_cellules,
             })
-    return lignes
+    return lignes, nb_humidites_negatives_corrigees
 
 
 def lire_historique(api_url: str, cle: str | None) -> list[dict[str, Any]]:
@@ -642,9 +665,12 @@ def main() -> None:
     print(f"Emprise CDS : N={area[0]}, W={area[1]}, S={area[2]}, E={area[3]}.")
     fichiers = telecharger_groupes(debut, fin, area, options.cache, sans_cache=options.sans_cache)
     nouveaux: list[dict[str, Any]] = []
+    nb_humidites_negatives_corrigees = 0
     for path in fichiers:
         print(f"Agrégation de {path.name}.")
-        nouveaux.extend(agreger_netcdf(path, features, noms))
+        lignes_mois, nb_corrigees = agreger_netcdf(path, features, noms)
+        nouveaux.extend(lignes_mois)
+        nb_humidites_negatives_corrigees += nb_corrigees
 
     # Correctif obligatoire : le produit mensuel standard contient de mauvaises accumulations
     # de précipitations entre septembre 2022 et février 2024. On remplace uniquement ce champ
@@ -726,6 +752,11 @@ def main() -> None:
         "agregation": "Moyenne surfacique des cellules dont le centre tombe dans le contour GeoAlgeria ; poids cos(latitude).",
         "indicateurs": ["precipitation_mm", "anomalie_precipitation_pct", "spi_3", "spi_12", "humidite_sol_0_7_cm", "humidite_sol_7_28_cm", "humidite_sol_28_100_cm", "humidite_sol_100_289_cm", "humidite_sol_0_100_cm", "humidite_sol_0_289_cm", "percentile_humidite_sol", "temperature_moyenne_c"],
         "controle": controle,
+        "qualite_humidite_sol": {
+            "valeurs_negatives_dans_tolerance_mises_a_zero": nb_humidites_negatives_corrigees,
+            "tolerance_m3_m3": TOLERANCE_HUMIDITE_M3_M3,
+            "regle": "Les valeurs dans [-0,001 ; 0[ m³/m³ sont ramenées à zéro ; toute valeur inférieure à -0,001 ou supérieure à 1 bloque le calcul.",
+        },
         "cellules_par_wilaya": {code: int(next(ligne["nb_cellules"] for ligne in lignes_brutes if ligne["code_wilaya"] == code)) for code in sorted({ligne["code_wilaya"] for ligne in lignes_brutes})},
         "notes": [
             "ERA5-Land est une réanalyse modélisée, pas un réseau de mesures au sol.",
