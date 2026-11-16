@@ -1,0 +1,98 @@
+name: Synchro agriculture algérienne — FAOSTAT
+
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "23 6 1 * *"
+  workflow_dispatch:
+    inputs:
+      essai:
+        description: "Essai : télécharger et calculer sans publier"
+        type: boolean
+        default: true
+      forcer:
+        description: "Forcer : ignorer l'échéance"
+        type: boolean
+        default: false
+
+concurrency:
+  group: agriculture-faostat-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  controle-branche:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Vérifier les types TypeScript
+        run: npm run typecheck
+      - name: Tester l'API
+        run: npm test
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tester le calcul FAOSTAT
+        run: |
+          python -m py_compile scripts/agriculture/calculer.py
+          python -m unittest discover -s scripts/agriculture/tests -p "test_*.py" -v
+      - name: Valider le workflow
+        run: |
+          python -m pip install --disable-pip-version-check actionlint-py
+          actionlint .github/workflows/agriculture-faostat-sync.yml
+
+  synchro:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      API_URL: ${{ secrets.API_URL }}
+      CLE_SYNCHRO: ${{ secrets.CLE_SYNCHRO }}
+      SYNCHRO_ESSAI: ${{ github.event_name == 'workflow_dispatch' && inputs.essai || false }}
+      SYNCHRO_FORCER: ${{ github.event_name == 'workflow_dispatch' && inputs.forcer || false }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Début de l'exécution
+        run: echo "SYNCHRO_DEBUT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+      - name: Vérifier l'échéance
+        id: echeance
+        run: npx tsx scripts/agriculture/publier.ts --verifier
+      - name: Télécharger et agréger les séries FAOSTAT
+        id: calcul
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: |
+          python scripts/agriculture/calculer.py \
+            --cache "$RUNNER_TEMP/agriculture/cache" \
+            --sortie "$RUNNER_TEMP/agriculture/sortie"
+      - name: Publier les séries et rapporter
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/agriculture/publier.ts --sortie "$RUNNER_TEMP/agriculture/sortie"
+      - name: Conserver les agrégats calculés
+        if: always() && steps.calcul.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: agriculture-algerie-faostat-sortie
+          path: ${{ runner.temp }}/agriculture/sortie/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Rapporter l'échec
+        if: failure() && steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/agriculture/publier.ts --echec "Échec de la collecte FAOSTAT ou de la publication du dataset agricole (voir les journaux)."
