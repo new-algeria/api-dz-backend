@@ -16,6 +16,10 @@ const POLITIQUES = {
   redirection: { navigateur: "public, max-age=60", cdn: "max-age=60" },
   /** Aperçus pour les réseaux sociaux : l'URL de l'image change avec la donnée (`?v=`), la page se relit en 1 h. */
   apercu: { navigateur: "public, max-age=3600", cdn: "max-age=86400, stale-while-revalidate=604800" },
+  /** Chiffres par wilaya : recalculés au plus quand un fichier change, relus toutes les 6 h. */
+  agregat: { navigateur: "public, max-age=600", cdn: "max-age=21600, stale-while-revalidate=86400" },
+  /** Calcul encore partiel (budget de temps atteint) : court, pour qu'un prochain appel le complète. */
+  partiel: { navigateur: "no-cache", cdn: "max-age=30" },
   /** Documentation et OpenAPI. */
   documentation: { navigateur: "public, max-age=300", cdn: "max-age=3600, stale-while-revalidate=86400" },
 } as const;

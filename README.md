@@ -36,6 +36,7 @@ npm run typecheck
 | `POST /v1/datasets/:slug/view` | Compter une consultation de fiche (depuis le site) | aucun | 120/min |
 | `GET /v1/datasets/:slug/download?format=csv\|xlsx\|json\|geojson&file=&inline=` | 302 vers un lien R2 signé (10 min) | 60 s | 30/min |
 | `GET /v1/categories`, `/v1/licences`, `/v1/sources`, `/v1/stats` | Référentiels | 1 h | 120/min |
+| `GET /v1/wilayas`, `/v1/wilayas/{code}` | Chiffres par wilaya : nombre de lieux de chaque donnée dans les 69 wilayas, population, rangs (page « Ma wilaya en chiffres » du site) | 6 h (30 s si partiel) | 120/min |
 | `GET /v1/assistant/quota` | Quota quotidien DjazAI du compte connecté | aucun | 10/min/IP |
 | `POST /v1/assistant/query` | DjazAI : réponse Markdown et sources structurées à partir du catalogue publié et des aperçus (connexion requise) | aucun | 10/min/IP |
 | `POST /v1/members/registered` | Signale une nouvelle inscription à l'équipe par email (data-dz et New Algeria, connexion requise) | aucun | 10/min/IP |

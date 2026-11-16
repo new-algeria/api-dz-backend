@@ -13,6 +13,7 @@ import {
 import { colonnesDe, FORMATS_SORTIE, lignesAPlat } from "../lib/conversion.js";
 import { ErreurApi, introuvable } from "../lib/erreurs.js";
 import { lienTelechargement, lireTableDonnee } from "../lib/fichiers.js";
+import { chargerChiffresWilayas, codeWilaya, rangDe } from "../lib/wilayas.js";
 import { langueApercu, pageIntrouvable, pagePartage, type FicheApercu } from "../lib/partage.js";
 import { limiteDebit } from "../middleware/limite-debit.js";
 import { FicheDonnee, NomFichier, Pagination, ParamsSlug, reponsesErreur, ResumeDonnee } from "../schemas.js";
@@ -307,6 +308,113 @@ routesPubliques.openapi(
       mettreEnCache(c, "redirection");
       return c.redirect(`${URL_SITE}/og-image.png`, 302);
     }
+  }
+);
+
+// ---------------------------------------------------------------- Chiffres par wilaya
+
+const Comptes = z.record(z.string(), z.number().int()).openapi({ description: "Nombre par code de wilaya (01 à 69) ; une wilaya absente vaut 0" });
+const PopulationWilaya = z.object({ valeur: z.number(), annee: z.number().int() }).nullable();
+const RefWilaya = z
+  .object({ code: z.string(), nom: z.object({ fr: z.string(), ar: z.string().nullable() }), population: PopulationWilaya })
+  .openapi("Wilaya");
+const DonneeParWilaya = z
+  .object({
+    slug: z.string(),
+    titre: z.record(z.string(), z.string()),
+    categorie_slug: z.string().nullable(),
+    source: z.object({ slug: z.string(), nom: z.string() }).nullable(),
+    fichier: z.string().openapi({ description: "Fichier(s) compté(s), séparés par des virgules" }),
+    total: z.number().int().openapi({ description: "Enregistrements placés dans une wilaya" }),
+    sans_wilaya: z.number().int().openapi({ description: "Lieux hors des 69 contours (en mer, coordonnées erronées)" }),
+    comptes: Comptes,
+  })
+  .openapi("DonneeParWilaya");
+const EnteteChiffres = {
+  genere_le: z.string(),
+  complet: z.boolean().openapi({ description: "Faux si le calcul n'a pas pu lire toutes les données à temps (réessayez dans une minute)" }),
+  population_source: z.object({ slug: z.string(), annee: z.number().int().nullable() }).nullable(),
+};
+
+routesPubliques.openapi(
+  createRoute({
+    method: "get",
+    path: "/v1/wilayas",
+    tags: ["Référentiels"],
+    summary: "Chiffres de toutes les données par wilaya",
+    description:
+      "Pour chaque donnée publiée qui recense des lieux (écoles, pharmacies, stations…), le nombre d'enregistrements dans chacune des 69 wilayas, " +
+      "avec la dernière population estimée. Les lieux sont rattachés par leur code de wilaya, sinon par leurs coordonnées dans les contours GeoAlgeria. " +
+      "Les données non redistribuables ne sont pas comptées.",
+    responses: {
+      ...json(z.object({ ...EnteteChiffres, wilayas: z.array(RefWilaya), donnees: z.array(DonneeParWilaya) }), "Chiffres par wilaya"),
+      ...reponsesErreur(429, 503),
+    },
+  }),
+  async (c) => {
+    const chiffres = await chargerChiffresWilayas();
+    mettreEnCache(c, chiffres.complet ? "agregat" : "partiel");
+    return c.json(chiffres, 200);
+  }
+);
+
+routesPubliques.openapi(
+  createRoute({
+    method: "get",
+    path: "/v1/wilayas/{code}",
+    tags: ["Référentiels"],
+    summary: "Chiffres d'une wilaya",
+    description: "Nombre d'enregistrements de chaque donnée dans la wilaya, son rang parmi les 69 (1 = la plus fournie) et le total national.",
+    request: { params: z.object({ code: z.string().regex(/^\d{1,2}$/).openapi({ example: "16" }) }) },
+    responses: {
+      ...json(
+        z.object({
+          ...EnteteChiffres,
+          wilaya: RefWilaya,
+          rang_population: z.number().int().nullable(),
+          donnees: z.array(
+            z.object({
+              slug: z.string(),
+              titre: z.record(z.string(), z.string()),
+              categorie_slug: z.string().nullable(),
+              source: z.object({ slug: z.string(), nom: z.string() }).nullable(),
+              nombre: z.number().int(),
+              rang: z.number().int(),
+              total_national: z.number().int(),
+            })
+          ),
+        }),
+        "Chiffres de la wilaya"
+      ),
+      ...reponsesErreur(400, 404, 429, 503),
+    },
+  }),
+  async (c) => {
+    const code = codeWilaya(c.req.valid("param").code);
+    if (!code) throw introuvable("Wilaya");
+    const { wilayas, donnees, ...entete } = await chargerChiffresWilayas();
+    const wilaya = wilayas.find((w) => w.code === code)!;
+    const populations = Object.fromEntries(wilayas.filter((w) => w.population).map((w) => [w.code, w.population!.valeur]));
+    mettreEnCache(c, entete.complet ? "agregat" : "partiel");
+    return c.json(
+      {
+        ...entete,
+        wilaya,
+        rang_population: wilaya.population ? rangDe(populations, code) : null,
+        donnees: donnees
+          .map((donnee) => ({
+            slug: donnee.slug,
+            titre: donnee.titre,
+            categorie_slug: donnee.categorie_slug,
+            source: donnee.source,
+            nombre: donnee.comptes[code] ?? 0,
+            rang: rangDe(donnee.comptes, code),
+            total_national: donnee.total,
+          }))
+          .sort((a, b) => b.nombre - a.nombre),
+      },
+      200
+    );
   }
 );
 
