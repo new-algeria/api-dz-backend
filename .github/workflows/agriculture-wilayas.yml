@@ -1,6 +1,8 @@
 name: Vérifier extraction agriculture par wilaya
 
 on:
+  push:
+    branches: [feat/agriculture-wilayas]
   pull_request:
     branches: [main]
   workflow_dispatch:
