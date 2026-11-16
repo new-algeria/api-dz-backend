@@ -1,0 +1,40 @@
+name: Vérifier extraction agriculture par wilaya
+
+on:
+  push:
+    branches: [feat/agriculture-wilayas]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Installer les dépendances
+        run: python -m pip install -r scripts/agriculture/requirements-wilayas.txt
+      - name: Tester les contrôles unitaires
+        working-directory: scripts/agriculture
+        run: python -m unittest -v test_calculer_wilayas.py
+      - name: Extraire le vrai rapport officiel Série B 2019
+        run: |
+          python scripts/agriculture/calculer_wilayas.py \
+            --sortie "$RUNNER_TEMP/agriculture-wilayas"
+      - name: Archiver les données extraites et le rapport de provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: agriculture-wilayas-serie-b-2019
+          path: |
+            ${{ runner.temp }}/agriculture-wilayas/agriculture-wilayas-2019.json
+            ${{ runner.temp }}/agriculture-wilayas/agriculture-wilayas-2019.csv
+            ${{ runner.temp }}/agriculture-wilayas/rapport.json
+          if-no-files-found: error
+          retention-days: 30
