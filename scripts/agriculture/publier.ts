@@ -106,12 +106,12 @@ const champs = {
     "Ce jeu de données ne contient pas de ventilation par wilaya. Les publications nationales ou régionales du ministère algérien et l'enquête communale de l'ONS doivent être exploitées séparément pour créer une couche territoriale. Les années et produits disponibles varient selon l'indicateur. Une valeur absente ne signifie pas une production nulle. FAOSTAT peut réviser les séries.",
     "Les valeurs ne sont jamais additionnées entre produits ou unités incompatibles. Les indicateurs et unités originaux sont conservés.", "",
     "## Attribution",
-    "FAOSTAT — Organisation des Nations Unies pour l'alimentation et l'agriculture (FAO). Respecter la licence et les conditions d'attribution indiquées par FAOSTAT.",
+    "FAOSTAT — Organisation des Nations Unies pour l'alimentation et l'agriculture (FAO). Respecter CC BY 4.0 et les conditions complémentaires FAO : attribution obligatoire, pas d’approbation implicite, restrictions d’usage promotionnel commercial et vérification des droits de tiers.",
   ].join("\n"),
   categorie_slug: "agriculture",
   source_slug: "faostat-qcl",
   licence_code: "CC-BY-4.0",
-  licence_details: "Séries nationales FAOSTAT QCL. Attribution à la FAO/FAOSTAT ; consulter les conditions de réutilisation et d'attribution affichées par le fournisseur.",
+  licence_details: "CC BY 4.0 complétée par les conditions FAO sur les bases statistiques : attribution obligatoire, interdiction de suggérer un soutien de la FAO, restrictions d’usage promotionnel commercial et vérification des exceptions de tiers. https://www.fao.org/contact-us/terms/db-terms-of-use/fr/",
   url_source: rapport.source_url,
   mots_cles: ["agriculture", "production agricole", "céréales", "blé", "orge", "dattes", "olives", "agrumes", "élevage", "rendement", "FAOSTAT", "FAO", "Algérie", "الزراعة", "الجزائر"],
   frequence_maj: "mensuelle",
@@ -122,6 +122,7 @@ const champs = {
     nb_types_indicateurs: rapport.nb_types_indicateurs,
     empreinte_sha256_archive: rapport.empreinte_sha256_archive,
     granularite: "nationale uniquement",
+    conditions_url: "https://www.fao.org/contact-us/terms/db-terms-of-use/fr/",
   },
 };
 const meta = {
