@@ -84,17 +84,25 @@ def extract(pdf_path: Path) -> list[dict[str, object]]:
         raise RuntimeError("Installer pdfplumber (requirements agriculture)") from exc
     with pdfplumber.open(pdf_path) as pdf:
         candidates = []
-        for page in pdf.pages:
+        diagnostics = []
+        for page_number, page in enumerate(pdf.pages, start=1):
             text = (page.extract_text() or "").upper()
-            if "TOTAL CEREALES D'HIVER" not in text:
+            if "CEREAL" not in text:
                 continue
-            for table in page.extract_tables() or []:
+            tables = page.extract_tables() or []
+            diagnostics.append({
+                "page": page_number,
+                "text": text[:1800],
+                "tables": tables[:3],
+            })
+            for table in tables:
                 try:
                     candidates.append(normalize_table(table))
                 except (ValueError, TypeError):
                     continue
-    if not candidates:
-        raise ValueError("Table « TOTAL CEREALES D'HIVER » introuvable ou non conforme")
+        if not candidates:
+            print("DIAGNOSTIC_EXTRACTION=" + json.dumps(diagnostics, ensure_ascii=False, default=str)[:18000])
+            raise ValueError("Aucune table céréales ne contient 48 wilayas et le total officiel attendu")
     return candidates[0]
 
 
