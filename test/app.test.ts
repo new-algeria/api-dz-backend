@@ -31,7 +31,7 @@ describe("API", () => {
     const spec = await (await requete("/openapi.json")).json();
     expect(spec.openapi).toBe("3.1.0");
     expect(Object.keys(spec.paths)).toEqual(
-      expect.arrayContaining(["/v1/datasets", "/v1/datasets/{slug}", "/v1/datasets/{slug}/download", "/v1/admin/datasets", "/v1/admin/submissions/{id}/publish", "/v1/admin/sources", "/v1/admin/slugs/{slug}", "/v1/admin/datasets/{slug}/rename"])
+      expect.arrayContaining(["/v1/datasets", "/v1/datasets/{slug}", "/v1/datasets/{slug}/download", "/v1/admin/datasets", "/v1/admin/submissions/{id}/publish", "/v1/admin/sources", "/v1/admin/slugs/{slug}", "/v1/admin/datasets/{slug}/rename", "/v1/wilayas", "/v1/wilayas/{code}"])
     );
   });
 
@@ -133,5 +133,10 @@ describe("OpenAPI", () => {
   it("met la spécification en cache", async () => {
     const reponse = await requete("/openapi.json");
     expect(reponse.headers.get("cdn-cache-control")).toContain("max-age=3600");
+  });
+  it("refuse un code de wilaya hors de 01 à 69 sans rien calculer", async () => {
+    const reponse = await requete("/v1/wilayas/70");
+    expect(reponse.status).toBe(404);
+    expect((await reponse.json()).code).toBe("not_found");
   });
 });
