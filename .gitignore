@@ -17,3 +17,7 @@ coverage/
 
 # Extrait OpenStreetMap et fichiers de travail de scripts/osm
 .osm/
+
+# Dossiers de travail de la synchro football
+scripts/football/cache/
+scripts/football/sortie/
