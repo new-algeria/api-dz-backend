@@ -14,7 +14,7 @@ import { indexerContours, type ContourWilaya } from "./wilayas.js";
  */
 
 /** Version du dessin : la changer force le recalcul de toutes les vignettes. */
-const VERSION = "v1";
+const VERSION = "v2";
 /** Au-delà, le fichier n'est pas lu (mémoire et durée de la fonction). */
 export const TAILLE_MAX_VIGNETTE = 25 * 1024 * 1024;
 const REFERENTIEL = "divisions-administratives";

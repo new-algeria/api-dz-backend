@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Table } from "../src/lib/conversion.js";
-import { lireTemps, MAX_POINTS, planVignette, svgVignette } from "../src/lib/vignette.js";
+import { cadreZoome, lireTemps, MAX_POINTS, planVignette, svgVignette } from "../src/lib/vignette.js";
 import { fichiersVignette } from "../src/lib/vignette-image.js";
 import type { ContourWilaya } from "../src/lib/wilayas.js";
 import type { FichierInterne } from "../src/lib/catalogue.js";
@@ -138,6 +138,33 @@ describe("vignette : dessin", () => {
     const svg = svgVignette({ genre: "points", points: [[0.5, 30.5], [50, 50]] }, contours);
     expect(svg.match(/<circle/g)).toHaveLength(1);
     expect(svg.match(/<path/g)).toHaveLength(3);
+  });
+});
+
+describe("vignette : zoom sur les points", () => {
+  const algerie: [number, number, number, number] = [-8.7, 18.9, 12, 37.1];
+
+  it("zoome sur le Nord quand les points y sont concentrés, sans se laisser dézoomer par quelques points isolés", () => {
+    const nord = Array.from({ length: 500 }, (_, i) => [-1 + (i % 50) / 5, 35 + (i % 10) / 5] as [number, number]);
+    const isoles = [[5, 22], [-6, 27]] as [number, number][];
+    const [ouest, sud, est, nord_] = cadreZoome([...nord, ...isoles], algerie);
+    expect(sud).toBeGreaterThan(33);
+    expect(nord_).toBeLessThanOrEqual(37.1);
+    expect(ouest).toBeGreaterThan(-3);
+    expect(est).toBeLessThan(11);
+  });
+
+  it("garde un cadre minimal autour d'un seul point, sans sortir de l'Algérie", () => {
+    const [ouest, sud, est, nord] = cadreZoome([[3, 36.9]], algerie);
+    expect(est - ouest).toBeCloseTo(4);
+    expect(nord - sud).toBeCloseTo(2.5);
+    expect(nord).toBeLessThanOrEqual(37.1);
+  });
+
+  it("montre tout le pays quand les points le couvrent, ou quand aucun n'est en Algérie", () => {
+    const partout = [[-8, 19], [11.9, 37], [2, 28]] as [number, number][];
+    expect(cadreZoome(partout, algerie)).toEqual(algerie);
+    expect(cadreZoome([[50, 50]], algerie)).toEqual(algerie);
   });
 });
 
