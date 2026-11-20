@@ -246,6 +246,14 @@ Limites : couverture NEIC/PDE non exhaustive par rapport au CRAAG ; événements
 
 
 
+## Synchronisation de l'équipe d'Algérie de football (scripts/football/)
+
+La donnée `equipe-algerie-foot-m` reprend tous les matchs de l'équipe A masculine depuis 1963 à partir de *International football results from 1872* (Mart Jürisoo, domaine public CC0) : fichier principal `bilan-annuel`, puis `matchs`, `bilan-adversaires`, `bilan-competitions`, `tirs-au-but` et `buteurs` (partiels, environ 30 % des buts), en JSON et CSV.
+
+- Workflow : `.github/workflows/football-sync.yml`, chaque mardi, réglé via la ligne `equipe-algerie-foot-m` de `synchronisations`.
+- Migration data-dz : `20261120000031_synchro_equipe_algerie_foot.sql` (source, licence et ligne de synchronisation).
+- Détails : `scripts/football/README.md`.
+
 ## Synchronisation de l'électricité en Algérie (scripts/electricite/)
 
 La donnée `electricite-algerie` extrait les lignes DZA du fichier mondial annuel « Yearly Electricity Data » d'Ember (CC BY 4.0) : production totale et par filière, demande, échanges nets, capacité installée, émissions et intensité. Le pipeline conserve les agrégats en les signalant (`source_agregee`) afin d'éviter les doubles comptes. La plage temporelle est détectée dans le fichier source et peut différer de celle des autres pays ; elle n'est pas extrapolée.
