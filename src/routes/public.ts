@@ -311,6 +311,31 @@ routesPubliques.openapi(
   }
 );
 
+routesPubliques.openapi(
+  createRoute({
+    method: "get",
+    path: "/v1/datasets/{slug}/thumbnail.webp",
+    tags: ["Données"],
+    summary: "Vignette du visuel (720 × 300)",
+    description:
+      "Petite carte (points, formes ou wilayas colorées) ou petit graphique (courbe, barres) de la donnée, sans texte, " +
+      "sur fond transparent : le site l'affiche au survol des cartes du catalogue. Calculée une fois par version du fichier. " +
+      "404 `no_thumbnail` si la donnée n'a rien à dessiner.",
+    request: { params: ParamsSlug, query: z.object({ v: QueryLangue.shape.v }) },
+    responses: {
+      200: { description: "Image WebP", content: { "image/webp": { schema: z.string().openapi({ format: "binary" }) } } },
+      ...reponsesErreur(403, 404, 429),
+    },
+  }),
+  async (c) => {
+    // Chargé à la demande : sharp (module natif) ne touche que cette route s'il ne charge pas.
+    const { vignetteDonnee } = await import("../lib/vignette-image.js");
+    const webp = await vignetteDonnee(c.req.valid("param").slug);
+    mettreEnCache(c, "apercu");
+    return c.body(webp as Uint8Array<ArrayBuffer>, 200, { "Content-Type": "image/webp" });
+  }
+);
+
 // ---------------------------------------------------------------- Chiffres par wilaya
 
 const Comptes = z.record(z.string(), z.number().int()).openapi({ description: "Nombre par code de wilaya (01 à 69) ; une wilaya absente vaut 0" });
