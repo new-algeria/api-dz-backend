@@ -104,16 +104,55 @@ export function lienPaquet(ligne: Record<string, unknown>): string | null {
   return url?.startsWith("https://www.npmjs.com/") ? url : null;
 }
 
-export async function compterEvenementDonnee(slug: string, evenement: "vue" | "telechargement"): Promise<number> {
-  const { data, error } = await supabaseAdmin().rpc("compter_evenement_donnee", {
+/** Contexte d'un événement daté (migration data-dz 20261120000032) : compte, fichier, format et origine. */
+export interface ContexteEvenement {
+  /** Compte du membre connecté, seulement pour un téléchargement fait depuis le site. */
+  utilisateurId?: string | null;
+  fichier?: string | null;
+  format?: string | null;
+  origine?: "site" | "api";
+}
+
+/** Fonction absente de la base (migration pas encore appliquée) : PostgREST PGRST202 ou Postgres 42883. */
+const fonctionAbsente = (code: string | undefined) => code === "PGRST202" || code === "42883";
+
+/**
+ * Incrémente le compteur cumulé d'une donnée publiée et enregistre l'événement daté (`evenements_donnees`).
+ * Tant que la migration 20261120000032 manque, seul le compteur cumulé est tenu (ancienne fonction).
+ */
+export async function compterEvenementDonnee(slug: string, evenement: "vue" | "telechargement", contexte: ContexteEvenement = {}): Promise<number> {
+  const base = supabaseAdmin();
+  let { data, error } = await base.rpc("enregistrer_evenement_donnee", {
     p_slug: slug,
     p_evenement: evenement,
+    p_utilisateur: evenement === "telechargement" ? (contexte.utilisateurId ?? null) : null,
+    p_fichier: contexte.fichier ?? null,
+    p_format: contexte.format ?? null,
+    p_origine: contexte.origine ?? "api",
   });
+  if (error && fonctionAbsente(error.code)) {
+    ({ data, error } = await base.rpc("compter_evenement_donnee", { p_slug: slug, p_evenement: evenement }));
+  }
   if (error) throw erreurSupabase(error);
   if (data === null || data === undefined) throw new Error("Donnée publiée introuvable");
   const compteur = Number(data);
   if (!Number.isSafeInteger(compteur) || compteur < 0) throw new Error("Compteur de donnée invalide");
   return compteur;
+}
+
+/**
+ * Compte du membre connecté d'après `Authorization: Bearer <jeton de session>`, ou `null` (visiteur, jeton
+ * absent, expiré ou invalide). Ne lève jamais : un téléchargement ne doit pas échouer pour une statistique.
+ */
+export async function membreFacultatif(autorisation: string | undefined): Promise<string | null> {
+  const jeton = autorisation?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+  if (!jeton) return null;
+  try {
+    const { data, error } = await supabasePublic().auth.getUser(jeton);
+    return error ? null : (data.user?.id ?? null);
+  } catch {
+    return null;
+  }
 }
 
 export const urlApiDonnee = (slug: string) => `${lireConfig().URL_API}/v1/datasets/${slug}`;
