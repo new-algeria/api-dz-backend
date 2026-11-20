@@ -255,20 +255,63 @@ const VERT = "#10b981";
 const GRIS = "#94a3b8";
 const f = (n: number) => (Math.round(n * 10) / 10).toString();
 
-/** Projection équirectangulaire (cos 28°) cadrée sur l'emprise des wilayas, centrée dans la vignette. */
-function projection(contours: ContourWilaya[]) {
-  const emprise = contours.reduce(
-    (e, c) => [Math.min(e[0], c.emprise[0]), Math.min(e[1], c.emprise[1]), Math.max(e[2], c.emprise[2]), Math.max(e[3], c.emprise[3])],
+type Cadre = [number, number, number, number];
+const EMPRISE_ALGERIE: Cadre = [-8.7, 18.9, 12, 37.1];
+
+/** Emprise [ouest, sud, est, nord] des wilayas (celle de l'Algérie à défaut de contours). */
+function empriseWilayas(contours: ContourWilaya[]): Cadre {
+  const e = contours.reduce<Cadre>(
+    (acc, c) => [Math.min(acc[0], c.emprise[0]), Math.min(acc[1], c.emprise[1]), Math.max(acc[2], c.emprise[2]), Math.max(acc[3], c.emprise[3])],
     [Infinity, Infinity, -Infinity, -Infinity]
   );
-  const [ouest, sud, est, nord] = Number.isFinite(emprise[0]) ? emprise : [-8.7, 18.9, 12, 37.1];
+  return Number.isFinite(e[0]) ? e : EMPRISE_ALGERIE;
+}
+
+const quantile = (tries: number[], q: number) => tries[Math.min(tries.length - 1, Math.max(0, Math.round(q * (tries.length - 1))))];
+
+/**
+ * Cadre zoomé sur les positions : du 4e au 96e centile sur chaque axe (quelques points isolés ne dézooment pas
+ * la carte), élargi de 12 %, au moins 4° × 2,5°, sans sortir de l'emprise des wilayas. Ainsi une donnée
+ * concentrée dans le Nord (pharmacies, stations) remplit la vignette au lieu d'y occuper un petit coin.
+ */
+export function cadreZoome(positions: Position[], emprise: Cadre): Cadre {
+  const dedans = positions.filter(([x, y]) => x >= emprise[0] && x <= emprise[2] && y >= emprise[1] && y <= emprise[3]);
+  if (dedans.length === 0) return emprise;
+  const xs = dedans.map((p) => p[0]).sort((a, b) => a - b);
+  const ys = dedans.map((p) => p[1]).sort((a, b) => a - b);
+  let [ouest, est, sud, nord] = [quantile(xs, 0.04), quantile(xs, 0.96), quantile(ys, 0.04), quantile(ys, 0.96)];
+  const elargir = (min: number, max: number, minimum: number): [number, number] => {
+    const centre = (min + max) / 2;
+    const demi = Math.max((max - min) * 1.24, minimum) / 2;
+    return [centre - demi, centre + demi];
+  };
+  [ouest, est] = elargir(ouest, est, 4);
+  [sud, nord] = elargir(sud, nord, 2.5);
+  // On décale le cadre plutôt que de le couper s'il dépasse l'emprise.
+  const caler = (min: number, max: number, borneMin: number, borneMax: number): [number, number] => {
+    if (max - min >= borneMax - borneMin) return [borneMin, borneMax];
+    if (min < borneMin) return [borneMin, borneMin + (max - min)];
+    if (max > borneMax) return [borneMax - (max - min), borneMax];
+    return [min, max];
+  };
+  [ouest, est] = caler(ouest, est, emprise[0], emprise[2]);
+  [sud, nord] = caler(sud, nord, emprise[1], emprise[3]);
+  return [ouest, sud, est, nord];
+}
+
+/** Projection équirectangulaire (cos 28°) qui cadre `cadre` au centre de la vignette. */
+function projection([ouest, sud, est, nord]: Cadre) {
   const k = Math.cos((28 * Math.PI) / 180);
-  const marge = 10;
+  const marge = 8;
   const echelle = Math.min((LARGEUR_VIGNETTE - 2 * marge) / ((est - ouest) * k), (HAUTEUR_VIGNETTE - 2 * marge) / (nord - sud));
   const dx = (LARGEUR_VIGNETTE - (est - ouest) * k * echelle) / 2;
   const dy = (HAUTEUR_VIGNETTE - (nord - sud) * echelle) / 2;
   const projeter = ([x, y]: Position): Position => [dx + (x - ouest) * k * echelle, dy + (nord - y) * echelle];
-  const dedans = ([x, y]: Position) => x >= ouest - 0.5 && x <= est + 0.5 && y >= sud - 0.5 && y <= nord + 0.5;
+  // Tout ce qui tombe dans la vignette (le cadre et ses marges horizontales ou verticales).
+  const dedans = (p: Position) => {
+    const [x, y] = projeter(p);
+    return x >= -6 && x <= LARGEUR_VIGNETTE + 6 && y >= -6 && y <= HAUTEUR_VIGNETTE + 6;
+  };
   return { projeter, dedans };
 }
 
@@ -279,7 +322,7 @@ function fondWilayas(contours: ContourWilaya[], projeter: (p: Position) => Posit
   return contours
     .map((contour) => {
       const d = contour.polygones.map((polygone) => polygone.map((anneau) => chemin(anneau as Position[], projeter, true)).join("")).join("");
-      return `<path d="${d}" fill-rule="evenodd" ${remplissage(contour.code)} stroke="${GRIS}" stroke-opacity="0.45" stroke-width="0.7"/>`;
+      return `<path d="${d}" fill-rule="evenodd" ${remplissage(contour.code)} stroke="${GRIS}" stroke-opacity="0.45" stroke-width="0.9"/>`;
     })
     .join("");
 }
@@ -290,7 +333,10 @@ export function svgVignette(plan: PlanVignette, contours: ContourWilaya[]): stri
   let corps = "";
 
   if (estCarte(plan)) {
-    const { projeter, dedans } = projection(contours);
+    const emprise = empriseWilayas(contours);
+    // Wilayas colorées : tout le pays. Points et formes : zoom sur la zone où ils se trouvent.
+    const positions = plan.genre === "points" ? plan.points : plan.genre === "formes" ? [...plan.surfaces, ...plan.lignes].flat() : [];
+    const { projeter, dedans } = projection(plan.genre === "wilayas" ? emprise : cadreZoome(positions, emprise));
     if (plan.genre === "wilayas") {
       const valeurs = Object.values(plan.valeurs).sort((a, b) => a - b);
       const rang = (v: number) => (valeurs.length > 1 ? valeurs.findIndex((x) => x >= v) / (valeurs.length - 1) : 1);
@@ -302,7 +348,7 @@ export function svgVignette(plan: PlanVignette, contours: ContourWilaya[]): stri
       corps = fondWilayas(contours, projeter, () => `fill="${GRIS}" fill-opacity="0.2"`);
       if (plan.genre === "points") {
         const points = plan.points.filter(dedans);
-        const r = points.length < 200 ? 4 : points.length < 2000 ? 2.6 : 1.8;
+        const r = points.length < 200 ? 5.5 : points.length < 2000 ? 3.6 : 2.6;
         corps += `<g fill="${VERT}" fill-opacity="0.8">${points.map((p) => {
           const [x, y] = projeter(p);
           return `<circle cx="${f(x)}" cy="${f(y)}" r="${r}"/>`;
