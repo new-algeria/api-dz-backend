@@ -34,8 +34,9 @@ npm run typecheck
 | `GET /v1/datasets/:slug` | Fiche : métadonnées, version, colonnes, aperçu, `ressources` (fichiers et liens) | 15 s | 120/min |
 | `GET /v1/datasets/:slug/data?file=&offset=&limit=&fields=&wilaya=&geometry=none\|wkt` | Enregistrements en JSON paginé (≤ 1000, ≤ 4 Mo) | 30 min | 30/min |
 | `GET /v1/datasets/:slug/sample?file=&n=&random=` | Échantillon | 30 min | 30/min |
-| `POST /v1/datasets/:slug/view` | Compter une consultation de fiche (depuis le site) | aucun | 120/min |
+| `POST /v1/datasets/:slug/view` | Compter une consultation de fiche (depuis le site) : compteur `nb_vues` et vue datée dans `evenements_donnees` (sans compte) | aucun | 120/min |
 | `GET /v1/datasets/:slug/download?format=csv\|xlsx\|json\|geojson&file=&inline=` | 302 vers un lien R2 signé (10 min) | 60 s | 30/min |
+| `POST /v1/datasets/:slug/download-link?format=&file=` | Bouton « Télécharger » du site : lien signé en JSON (`{ url, format, fichier }`), un seul téléchargement enregistré, avec le compte si `Authorization: Bearer <jeton de session>` (sinon anonyme). 422 en problem+json si la conversion est impossible | aucun | 30/min |
 | `GET /v1/categories`, `/v1/licences`, `/v1/sources`, `/v1/stats` | Référentiels | 1 h | 120/min |
 | `GET /v1/wilayas`, `/v1/wilayas/{code}` | Chiffres par wilaya : nombre de lieux de chaque donnée dans les 69 wilayas, population, rangs (page « Ma wilaya en chiffres » du site) | 6 h (30 s si partiel) | 120/min |
 | `GET /v1/assistant/quota` | Quota quotidien DjazAI du compte connecté | aucun | 10/min/IP |
@@ -245,6 +246,10 @@ Le script calcule toute la période à chaque passage pour intégrer les révisi
 Limites : couverture NEIC/PDE non exhaustive par rapport au CRAAG ; événements de magnitude inférieure à 2,5 exclus ; complétude variable selon les époques et les zones ; année courante partielle. Les catalogues historiques du CRAAG ne sont pas redistribués faute de licence ouverte affichée. Voir scripts/seismes/README.md.
 
 
+
+## Statistiques datées (evenements_donnees)
+
+Chaque vue de fiche (`/view`, origine `site`, jamais de compte) et chaque téléchargement (`/download`, origine `api` ; `/download-link`, origine `site`, avec le compte du membre connecté) passe par `compterEvenementDonnee()` (`src/lib/catalogue.ts`), qui appelle `enregistrer_evenement_donnee` : compteur cumulé `nb_vues` / `nb_telechargements` et ligne datée dans `evenements_donnees` (fichier, format, origine). Migration data-dz `20261120000032_evenements_donnees.sql` ; tant qu'elle manque, l'ancienne fonction `compter_evenement_donnee` prend le relais (compteurs seuls). La page `/admin/analytics` du site lit ces données par les fonctions `analytics_*` de la base (admins seulement). Rétention de 12 mois.
 
 ## Synchronisation de l'équipe d'Algérie de football (scripts/football/)
 

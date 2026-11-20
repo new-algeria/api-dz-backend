@@ -31,7 +31,7 @@ describe("API", () => {
     const spec = await (await requete("/openapi.json")).json();
     expect(spec.openapi).toBe("3.1.0");
     expect(Object.keys(spec.paths)).toEqual(
-      expect.arrayContaining(["/v1/datasets", "/v1/datasets/{slug}", "/v1/datasets/{slug}/download", "/v1/admin/datasets", "/v1/admin/submissions/{id}/publish", "/v1/admin/sources", "/v1/admin/slugs/{slug}", "/v1/admin/datasets/{slug}/rename", "/v1/wilayas", "/v1/wilayas/{code}", "/v1/datasets/{slug}/thumbnail.webp"])
+      expect.arrayContaining(["/v1/datasets", "/v1/datasets/{slug}", "/v1/datasets/{slug}/download", "/v1/admin/datasets", "/v1/admin/submissions/{id}/publish", "/v1/admin/sources", "/v1/admin/slugs/{slug}", "/v1/admin/datasets/{slug}/rename", "/v1/wilayas", "/v1/wilayas/{code}", "/v1/datasets/{slug}/thumbnail.webp", "/v1/datasets/{slug}/download-link"])
     );
   });
 
@@ -41,6 +41,21 @@ describe("API", () => {
     expect(reponse.headers.get("x-content-type-options")).toBe("nosniff");
     expect(reponse.headers.get("strict-transport-security")).toContain("max-age=63072000");
     expect(reponse.headers.get("x-request-id")).toBeTruthy();
+  });
+
+  it("accepte la session du site sur le lien de téléchargement (préflight CORS avec Authorization)", async () => {
+    const reponse = await requete("/v1/datasets/pharmacies/download-link?format=csv", {
+      method: "OPTIONS",
+      headers: { Origin: "https://www.data-dz.com", "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "authorization" },
+    });
+    expect(reponse.status).toBeLessThan(300);
+    expect(reponse.headers.get("access-control-allow-origin")).toBe("*");
+    expect(reponse.headers.get("access-control-allow-headers")?.toLowerCase()).toContain("authorization");
+  });
+
+  it("valide le format demandé au lien de téléchargement", async () => {
+    const reponse = await requete("/v1/datasets/pharmacies/download-link?format=exe", { method: "POST" });
+    expect(reponse.status).toBe(400);
   });
 
   it("autorise toutes les origines en lecture", async () => {

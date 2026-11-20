@@ -1,6 +1,6 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { mettreEnCache, sansCache } from "../lib/cache-http.js";
-import { URL_SITE, compterEvenementDonnee } from "../lib/catalogue.js";
+import { URL_SITE, compterEvenementDonnee, membreFacultatif } from "../lib/catalogue.js";
 import {
   chargerFicheInterne,
   chargerStatistiques,
@@ -26,11 +26,12 @@ const TAILLE_MAX_REPONSE = 4_000_000; // Vercel refuse les réponses de plus de 
 
 // Familles de limites : le plus spécifique d'abord (un seul middleware s'applique par requête).
 routesPubliques.use("/v1/datasets/:slug/download", limiteDebit("telechargement"));
+routesPubliques.use("/v1/datasets/:slug/download-link", limiteDebit("telechargement"));
 routesPubliques.use("/v1/datasets/:slug/data", limiteDebit("donnees"));
 routesPubliques.use("/v1/datasets/:slug/sample", limiteDebit("donnees"));
 routesPubliques.use("/v1/*", async (c, next) => {
   // Routes à limite propre, et administration (limitée dans routes/admin.ts) : pas de double comptage.
-  if (/^\/v1\/admin\//.test(c.req.path) || /^\/v1\/datasets\/[^/]+\/(download|data|sample)$/.test(c.req.path)) return next();
+  if (/^\/v1\/admin\//.test(c.req.path) || /^\/v1\/datasets\/[^/]+\/(download|download-link|data|sample)$/.test(c.req.path)) return next();
   return limiteDebit("lecture")(c, next);
 });
 
@@ -105,7 +106,8 @@ routesPubliques.openapi(
   }),
   async (c) => {
     const { slug } = c.req.valid("param");
-    const nb_vues = await compterEvenementDonnee(slug, "vue");
+    // Route appelée par le site : vue datée, sans compte (seuls les téléchargements sont liés à un compte).
+    const nb_vues = await compterEvenementDonnee(slug, "vue", { origine: "site" });
     sansCache(c);
     return c.json({ nb_vues }, 200);
   }
@@ -235,7 +237,7 @@ routesPubliques.openapi(
     const lien = await lienTelechargement(slug, format, file, inline);
     if (!inline) {
       try {
-        await compterEvenementDonnee(slug, "telechargement");
+        await compterEvenementDonnee(slug, "telechargement", { fichier: file ?? null, format, origine: "api" });
       } catch (erreur) {
         // Les statistiques ne doivent pas empêcher un téléchargement valide.
         console.error("Impossible d'incrémenter le compteur de téléchargements", c.get("requestId"), erreur);
@@ -243,6 +245,46 @@ routesPubliques.openapi(
     }
     sansCache(c);
     return c.redirect(lien, 302);
+  }
+);
+
+routesPubliques.openapi(
+  createRoute({
+    method: "post",
+    path: "/v1/datasets/{slug}/download-link",
+    tags: ["Données"],
+    summary: "Lien de téléchargement pour le site (JSON)",
+    description:
+      "Utilisée par le bouton « Télécharger » du site : renvoie le lien signé (10 minutes) en JSON au lieu de rediriger, " +
+      "et enregistre un seul téléchargement daté, avec le compte du membre si `Authorization: Bearer <jeton de session>` est fourni. " +
+      "Une conversion impossible répond 422 en `application/problem+json`. Pour un script, préférez `/download`.",
+    request: {
+      params: ParamsSlug,
+      query: z.object({
+        format: z.enum([...FORMATS_SORTIE, "ics", "pdf", "xml", "zip"]).default("json"),
+        file: NomFichier.optional(),
+      }),
+    },
+    responses: {
+      200: {
+        description: "Lien signé du fichier",
+        content: { "application/json": { schema: z.object({ url: z.url(), format: z.string(), fichier: z.string().nullable() }) } },
+      },
+      ...reponsesErreur(400, 403, 404, 422, 429),
+    },
+  }),
+  async (c) => {
+    const { slug } = c.req.valid("param");
+    const { format, file } = c.req.valid("query");
+    const [url, utilisateurId] = await Promise.all([lienTelechargement(slug, format, file), membreFacultatif(c.req.header("authorization"))]);
+    try {
+      await compterEvenementDonnee(slug, "telechargement", { utilisateurId, fichier: file ?? null, format, origine: "site" });
+    } catch (erreur) {
+      // Les statistiques ne doivent pas empêcher un téléchargement valide.
+      console.error("Impossible d'enregistrer le téléchargement", c.get("requestId"), erreur);
+    }
+    sansCache(c);
+    return c.json({ url, format, fichier: file ?? null }, 200);
   }
 );
 
