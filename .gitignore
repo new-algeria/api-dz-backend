@@ -21,3 +21,5 @@ coverage/
 # Dossiers de travail de la synchro football
 scripts/football/cache/
 scripts/football/sortie/
+scripts/petrole-gaz/cache/
+scripts/petrole-gaz/sortie/

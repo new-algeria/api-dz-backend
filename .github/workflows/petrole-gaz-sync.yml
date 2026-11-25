@@ -1,0 +1,127 @@
+# Synchronisation des séries annuelles du pétrole et du gaz naturel de l'Algérie depuis l'EIA (fichier groupé International).
+# Le fichier de l'EIA est public et sans clé ; seules les clés API_URL et CLE_SYNCHRO servent à la publication. L'échéance (30 jours) est en base.
+name: Synchro petrole-gaz
+
+on:
+  push:
+    branches: [relecture/petrole-gaz]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "37 6 * * 3"
+  workflow_dispatch:
+    inputs:
+      essai:
+        description: "Essai : calculer et rapporter, ne rien publier"
+        type: boolean
+        default: true
+      forcer:
+        description: "Forcer : ignorer l'échéance"
+        type: boolean
+        default: false
+
+concurrency:
+  group: petrole-gaz-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  controle-branche:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      API_URL: ${{ secrets.API_URL }}
+      SYNCHRO_ESSAI: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Vérifier les types
+        run: npm run typecheck
+
+      - name: Tester
+        run: npm test
+
+      - name: Valider le workflow
+        run: |
+          python -m pip install --disable-pip-version-check actionlint-py
+          actionlint .github/workflows/petrole-gaz-sync.yml
+
+      - name: Calculer le pétrole et le gaz en essai
+        id: calcul
+        run: |
+          npx tsx scripts/petrole-gaz/calculer.ts \
+            --cache "$RUNNER_TEMP/petrole-gaz/cache" \
+            --sortie "$RUNNER_TEMP/petrole-gaz/sortie"
+
+      - name: Vérifier la publication sans écrire
+        run: npx tsx scripts/petrole-gaz/publier.ts --essai --sortie "$RUNNER_TEMP/petrole-gaz/sortie"
+
+      - name: Conserver les fichiers calculés
+        if: always() && steps.calcul.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: petrole-gaz-algerie-sortie
+          path: ${{ runner.temp }}/petrole-gaz/sortie/
+          if-no-files-found: error
+          retention-days: 14
+
+  synchro:
+    if: github.event_name != 'push' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      API_URL: ${{ secrets.API_URL }}
+      CLE_SYNCHRO: ${{ secrets.CLE_SYNCHRO }}
+      SYNCHRO_ESSAI: ${{ inputs.essai }}
+      SYNCHRO_FORCER: ${{ inputs.forcer }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Début de l'exécution
+        run: echo "SYNCHRO_DEBUT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Échéance
+        id: echeance
+        run: npx tsx scripts/petrole-gaz/publier.ts --verifier
+
+      - name: Calculer le pétrole et le gaz
+        id: calcul
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: |
+          npx tsx scripts/petrole-gaz/calculer.ts \
+            --cache "$RUNNER_TEMP/petrole-gaz/cache" \
+            --sortie "$RUNNER_TEMP/petrole-gaz/sortie"
+
+      - name: Publier et rapporter
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/petrole-gaz/publier.ts --sortie "$RUNNER_TEMP/petrole-gaz/sortie"
+
+      - name: Conserver les fichiers calculés
+        if: always() && steps.calcul.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: petrole-gaz-algerie-sortie
+          path: ${{ runner.temp }}/petrole-gaz/sortie/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Rapporter l'échec
+        if: failure() && steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/petrole-gaz/publier.ts --echec "Échec de la GitHub Action (calcul ou publication), voir les journaux."
