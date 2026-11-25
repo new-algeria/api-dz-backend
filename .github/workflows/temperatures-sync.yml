@@ -1,0 +1,127 @@
+# Synchronisation hebdomadaire des températures quotidiennes au chef-lieu des 69 wilayas depuis NASA POWER.
+# NASA POWER est public et sans clé ; seules les clés API_URL et CLE_SYNCHRO servent à la publication.
+name: Synchro temperatures
+
+on:
+  push:
+    branches: [relecture/temperatures]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "43 4 * * 2"
+  workflow_dispatch:
+    inputs:
+      essai:
+        description: "Essai : calculer et rapporter, ne rien publier"
+        type: boolean
+        default: true
+      forcer:
+        description: "Forcer : ignorer l'échéance"
+        type: boolean
+        default: false
+
+concurrency:
+  group: temperatures-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  controle-branche:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      API_URL: ${{ secrets.API_URL }}
+      SYNCHRO_ESSAI: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Vérifier les types
+        run: npm run typecheck
+
+      - name: Tester
+        run: npm test
+
+      - name: Valider le workflow
+        run: |
+          python -m pip install --disable-pip-version-check actionlint-py
+          actionlint .github/workflows/temperatures-sync.yml
+
+      - name: Calculer les températures en essai
+        id: calcul
+        run: |
+          npx tsx scripts/temperatures/calculer.ts \
+            --cache "$RUNNER_TEMP/temperatures/cache" \
+            --sortie "$RUNNER_TEMP/temperatures/sortie"
+
+      - name: Vérifier la publication sans écrire
+        run: npx tsx scripts/temperatures/publier.ts --essai --sortie "$RUNNER_TEMP/temperatures/sortie"
+
+      - name: Conserver les fichiers calculés
+        if: always() && steps.calcul.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: temperatures-wilayas-sortie
+          path: ${{ runner.temp }}/temperatures/sortie/
+          if-no-files-found: error
+          retention-days: 14
+
+  synchro:
+    if: github.event_name != 'push' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      API_URL: ${{ secrets.API_URL }}
+      CLE_SYNCHRO: ${{ secrets.CLE_SYNCHRO }}
+      SYNCHRO_ESSAI: ${{ inputs.essai }}
+      SYNCHRO_FORCER: ${{ inputs.forcer }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Début de l'exécution
+        run: echo "SYNCHRO_DEBUT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Échéance
+        id: echeance
+        run: npx tsx scripts/temperatures/publier.ts --verifier
+
+      - name: Calculer les températures
+        id: calcul
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: |
+          npx tsx scripts/temperatures/calculer.ts \
+            --cache "$RUNNER_TEMP/temperatures/cache" \
+            --sortie "$RUNNER_TEMP/temperatures/sortie"
+
+      - name: Publier et rapporter
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/temperatures/publier.ts --sortie "$RUNNER_TEMP/temperatures/sortie"
+
+      - name: Conserver les fichiers calculés
+        if: always() && steps.calcul.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: temperatures-wilayas-sortie
+          path: ${{ runner.temp }}/temperatures/sortie/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Rapporter l'échec
+        if: failure() && steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/temperatures/publier.ts --echec "Échec de la GitHub Action (calcul ou publication), voir les journaux."
