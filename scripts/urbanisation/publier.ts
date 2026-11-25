@@ -94,6 +94,8 @@ const premiere = rapport.epoques[0];
 const observee = rapport.derniere_epoque_observee;
 const derniere = rapport.epoques.at(-1)!;
 const national = rapport.surface_batie_nationale_km2;
+/** « de Sétif », « d'Alger », « d'El Oued » : élision devant une voyelle. */
+const deWilaya = (nom: string) => (/^[aeiouyàâéèêîïôûAEIOUYÀÂÉÈÊÎÏÔÛ]/.test(nom) ? `d'${nom}` : `de ${nom}`);
 const nombre = (n: number, decimales = 0) => n.toLocaleString("fr-FR", { maximumFractionDigits: decimales });
 const multiplie = national[String(premiere)] ? national[String(observee)] / national[String(premiere)] : null;
 const enTete = [...wilayas].filter((l) => l.annee === observee).sort((a, b) => b.surface_batie_km2 - a.surface_batie_km2)[0];
@@ -105,7 +107,7 @@ const champs = {
     ar: "التوسع العمراني: المساحة المبنية حسب الولاية (1975–2030)",
   },
   description: {
-    fr: `Surface bâtie de chacune des 69 wilayas tous les 5 ans de ${premiere} à ${derniere}, mesurée par satellite (Global Human Settlement Layer de la Commission européenne, CC BY 4.0). En ${observee}, l'Algérie comptait ${nombre(national[String(observee)])} km² de surfaces bâties${multiplie ? `, ${nombre(multiplie, 1)} fois plus qu'en ${premiere}` : ""}, dont ${nombre(enTete.surface_batie_km2)} km² dans la wilaya de ${enTete.wilaya}. ${derniere > observee ? `Les années après ${observee} sont des projections.` : ""}`,
+    fr: `Surface bâtie de chacune des 69 wilayas tous les 5 ans de ${premiere} à ${derniere}, mesurée par satellite (Global Human Settlement Layer de la Commission européenne, CC BY 4.0). En ${observee}, l'Algérie comptait ${nombre(national[String(observee)])} km² de surfaces bâties${multiplie ? `, ${nombre(multiplie, 1)} fois plus qu'en ${premiere}` : ""}, dont ${nombre(enTete.surface_batie_km2)} km² dans la wilaya ${deWilaya(enTete.wilaya)}. ${derniere > observee ? `Les années après ${observee} sont des projections.` : ""}`,
     en: `Built-up surface of each of the 69 wilayas every 5 years from ${premiere} to ${derniere}, measured by satellite (European Commission Global Human Settlement Layer, CC BY 4.0). In ${observee}, Algeria had ${nombre(national[String(observee)])} km² of built-up surface${multiplie ? `, ${nombre(multiplie, 1)} times more than in ${premiere}` : ""}. Years after ${observee} are projections.`,
     ar: `المساحة المبنية لكل ولاية من الولايات الـ69 كل 5 سنوات من ${premiere} إلى ${derniere}، مقيسة بالأقمار الصناعية (طبقة المستوطنات البشرية العالمية للمفوضية الأوروبية، CC BY 4.0). في ${observee} بلغت المساحات المبنية في الجزائر ${national[String(observee)]} كم². السنوات بعد ${observee} توقعات.`,
   },
