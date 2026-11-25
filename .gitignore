@@ -30,3 +30,6 @@ scripts/agriculture/cache/
 scripts/agriculture/sortie/
 scripts/commerce-exterieur/cache/
 scripts/commerce-exterieur/sortie/
+scripts/urbanisation/cache/
+scripts/urbanisation/sortie/
+scripts/urbanisation/__pycache__/
