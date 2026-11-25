@@ -47,7 +47,7 @@ export interface LigneSerie {
   indicateur: string;
   valeur: number;
   unite: string;
-  serie_eia: string;
+  code_serie_eia: string;
 }
 
 export type LigneBilan = { annee: number } & Record<CleIndicateur, number | null> & { part_gaz_exportee_pct: number | null };
@@ -119,7 +119,7 @@ export function calculer(series: SerieEia[]): ResultatCalcul {
         throw new Error(`Valeur invraisemblable pour ${indicateur.fr} en ${annee} : ${valeur} ${indicateur.unite}.`);
       }
       const arrondie = arrondi(valeur, indicateur.unite.startsWith("milliers") ? 1 : 2);
-      lignes.push({ annee, indicateur: indicateur.fr, valeur: arrondie, unite: indicateur.unite, serie_eia: indicateur.id });
+      lignes.push({ annee, indicateur: indicateur.fr, valeur: arrondie, unite: indicateur.unite, code_serie_eia: indicateur.id });
       valeurs.set(annee, { ...valeurs.get(annee), [indicateur.cle]: arrondie });
       annees.push(annee);
     }

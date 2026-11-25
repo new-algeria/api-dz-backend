@@ -28,7 +28,7 @@ d'après les statistiques internationales de l'U.S. Energy Information Administr
 
 ## Fichiers publiés
 
-- `series-annuelles` (principal) : format long `annee`, `indicateur`, `valeur`, `unite`, `serie_eia` (courbe avec
+- `series-annuelles` (principal) : format long `annee`, `indicateur`, `valeur`, `unite`, `code_serie_eia` (courbe avec
   sélecteur de série sur la fiche, chiffre « 8 indicateurs, 1973 → … » sur la carte du catalogue).
 - `bilan-annuel` : une ligne par année, une colonne par indicateur, plus `part_gaz_exportee_pct`.
 

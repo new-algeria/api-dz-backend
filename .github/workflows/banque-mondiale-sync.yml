@@ -1,0 +1,127 @@
+# Synchronisation d'une sélection d'indicateurs de la Banque mondiale (WDI) pour l'Algérie, par l'API v2 (sans clé).
+# Seules les clés API_URL et CLE_SYNCHRO servent à la publication. L'échéance (30 jours) est en base.
+name: Synchro banque-mondiale
+
+on:
+  push:
+    branches: [relecture/banque-mondiale]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "47 3 * * 5"
+  workflow_dispatch:
+    inputs:
+      essai:
+        description: "Essai : calculer et rapporter, ne rien publier"
+        type: boolean
+        default: true
+      forcer:
+        description: "Forcer : ignorer l'échéance"
+        type: boolean
+        default: false
+
+concurrency:
+  group: banque-mondiale-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  controle-branche:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      API_URL: ${{ secrets.API_URL }}
+      SYNCHRO_ESSAI: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Vérifier les types
+        run: npm run typecheck
+
+      - name: Tester
+        run: npm test
+
+      - name: Valider le workflow
+        run: |
+          python -m pip install --disable-pip-version-check actionlint-py
+          actionlint .github/workflows/banque-mondiale-sync.yml
+
+      - name: Calculer les indicateurs de la Banque mondiale en essai
+        id: calcul
+        run: |
+          npx tsx scripts/banque-mondiale/calculer.ts \
+            --cache "$RUNNER_TEMP/banque-mondiale/cache" \
+            --sortie "$RUNNER_TEMP/banque-mondiale/sortie"
+
+      - name: Vérifier la publication sans écrire
+        run: npx tsx scripts/banque-mondiale/publier.ts --essai --sortie "$RUNNER_TEMP/banque-mondiale/sortie"
+
+      - name: Conserver les fichiers calculés
+        if: always() && steps.calcul.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: indicateurs-developpement-algerie-sortie
+          path: ${{ runner.temp }}/banque-mondiale/sortie/
+          if-no-files-found: error
+          retention-days: 14
+
+  synchro:
+    if: github.event_name != 'push' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      API_URL: ${{ secrets.API_URL }}
+      CLE_SYNCHRO: ${{ secrets.CLE_SYNCHRO }}
+      SYNCHRO_ESSAI: ${{ inputs.essai }}
+      SYNCHRO_FORCER: ${{ inputs.forcer }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Début de l'exécution
+        run: echo "SYNCHRO_DEBUT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Échéance
+        id: echeance
+        run: npx tsx scripts/banque-mondiale/publier.ts --verifier
+
+      - name: Calculer les indicateurs de la Banque mondiale
+        id: calcul
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: |
+          npx tsx scripts/banque-mondiale/calculer.ts \
+            --cache "$RUNNER_TEMP/banque-mondiale/cache" \
+            --sortie "$RUNNER_TEMP/banque-mondiale/sortie"
+
+      - name: Publier et rapporter
+        if: steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/banque-mondiale/publier.ts --sortie "$RUNNER_TEMP/banque-mondiale/sortie"
+
+      - name: Conserver les fichiers calculés
+        if: always() && steps.calcul.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: indicateurs-developpement-algerie-sortie
+          path: ${{ runner.temp }}/banque-mondiale/sortie/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Rapporter l'échec
+        if: failure() && steps.echeance.outputs.a_faire == 'true'
+        run: npx tsx scripts/banque-mondiale/publier.ts --echec "Échec de la GitHub Action (calcul ou publication), voir les journaux."
