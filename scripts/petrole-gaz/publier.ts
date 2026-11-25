@@ -108,7 +108,7 @@ const champs = {
     `En ${annee} : ${brut} milliers de barils de pétrole brut par jour, ${gaz} milliards de m³ de gaz naturel produits, dont ${part} % exportés.`,
     "",
     "### Fichiers",
-    "- `series-annuelles` (principal, JSON et CSV) : format long (`annee`, `indicateur`, `valeur`, `unite`, `serie_eia`), une ligne par année et par indicateur.",
+    "- `series-annuelles` (principal, JSON et CSV) : format long (`annee`, `indicateur`, `valeur`, `unite`, `code_serie_eia`), une ligne par année et par indicateur.",
     "- `bilan-annuel` (JSON et CSV) : une ligne par année, une colonne par indicateur, plus `part_gaz_exportee_pct` (exportations ÷ production de gaz, calculée par data-dz).",
     "",
     "### Indicateurs",
