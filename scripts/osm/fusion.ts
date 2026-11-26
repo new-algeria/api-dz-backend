@@ -3,7 +3,9 @@
 // `@geometry: "center"`), déjà utilisé par les données OpenStreetMap du site, plus nos propriétés :
 //   osm_ajoute_le      : date du premier passage où l'objet a été vu ;
 //   osm_absent_depuis  : date du passage où il a disparu d'OpenStreetMap (jamais supprimé, à trancher par un admin) ;
-//   geoalgeria_id      : objet GeoAlgeria correspondant (même identifiant OSM, ou proche avec un nom proche).
+//   geoalgeria_id      : objet GeoAlgeria correspondant (même identifiant OSM, ou proche avec un nom proche) ;
+//   code_wilaya, wilaya, wilaya_ar : wilaya de l'objet (nettoyage.ts) ;
+//   doublon_probable   : identifiant de l'objet de référence quand le même lieu est saisi deux fois (nettoyage.ts).
 // Aucune date de passage n'est écrite sur un objet inchangé : un fichier identique garde la même empreinte,
 // et rien n'est republié.
 
@@ -134,7 +136,8 @@ export interface RapportFusion {
   total: number;
 }
 
-const NOS_PROPRIETES = ["osm_ajoute_le", "osm_absent_depuis", "geoalgeria_id"] as const;
+// `doublon_probable` est recalculé à chaque passage (nettoyage.ts) : il ne compte pas comme une modification d'OSM.
+const NOS_PROPRIETES = ["osm_ajoute_le", "osm_absent_depuis", "geoalgeria_id", "doublon_probable"] as const;
 
 function sansNosProprietes(proprietes: Record<string, unknown>) {
   const copie = { ...proprietes };
@@ -143,7 +146,7 @@ function sansNosProprietes(proprietes: Record<string, unknown>) {
 }
 
 /** Propriétés triées (`@id` en premier, `@geometry` en dernier) : même contenu = même texte = même empreinte. */
-function trierProprietes(proprietes: Record<string, unknown>): Objet["properties"] {
+export function trierProprietes(proprietes: Record<string, unknown>): Objet["properties"] {
   const cles = Object.keys(proprietes).sort((a, b) => {
     const rang = (cle: string) => (cle === "@id" ? 0 : cle === "@geometry" ? 2 : 1);
     return rang(a) - rang(b) || a.localeCompare(b);

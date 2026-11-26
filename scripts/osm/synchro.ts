@@ -14,6 +14,7 @@ import { ClientApi, ErreurAppel, type DonneeApi, type TagCompte } from "./api.js
 import { FLUX, NOUVELLES_DONNEES, type Flux } from "./categories.js";
 import { CLES_INVENTAIRE, dateExtrait, extraireFlux, inventaireTags, telechargerExtrait } from "./extraire.js";
 import { baisseAnormale, fusionner, numeroComplement, rapprocher, serialiser, type Objet, type RapportFusion } from "./fusion.js";
+import { localiserObjets, marquerDoublons, preparerWilayas } from "./nettoyage.js";
 
 const CODE = "openstreetmap";
 const SOURCE = "openstreetmap";
@@ -35,6 +36,14 @@ interface RapportFichier extends Partial<RapportFusion> {
   /** Aucun objet trouvé et rien de publié avant : fichier ignoré (tag mal écrit, ou absent d'Algérie). */
   vide?: boolean;
   geoalgeria?: number;
+  /** Objets de l'extrait hors d'Algérie (débord de l'extrait Geofabrik), non publiés. */
+  hors_algerie?: number;
+  /** Objets déjà publiés retirés parce qu'ils sont hors d'Algérie (premier nettoyage). */
+  retires_hors_algerie?: number;
+  /** Objets juste hors des contours simplifiés, rattachés à la wilaya la plus proche (marge ou côte). */
+  par_proximite?: number;
+  /** Objets marqués `doublon_probable`. */
+  doublons?: number;
   change: boolean;
 }
 
@@ -129,6 +138,14 @@ async function main() {
   for (const f of invalides) console.error(`Flux ${f.code} ignoré : expression invalide (${f.filtres.join(" ; ")}).`);
   const flux = tousLesFlux.filter((f) => !invalides.includes(f) && (!seulement || seulement.includes(f.slug)));
   await mkdir(dossier, { recursive: true });
+
+  // Contours des wilayas (nettoyage : wilaya de chaque objet, objets hors d'Algérie écartés). Sans eux, rien n'est publié.
+  const [texteContours, texteNoms] = await Promise.all([
+    api.lireFichier("divisions-administratives", "wilaya-boundaries", "geojson"),
+    api.lireFichier("divisions-administratives", "wilayas", "json"),
+  ]);
+  if (!texteContours || !texteNoms) throw new Error("Contours ou noms des wilayas introuvables (divisions-administratives) : nettoyage impossible, rien n'est publié.");
+  const wilayas = preparerWilayas(JSON.parse(texteContours), JSON.parse(texteNoms));
   const extraitDu = await dateExtrait();
   console.log(`Extrait Geofabrik du ${extraitDu} — ${flux.length} flux (${origineFlux})${essai ? " (essai : rien ne sera publié)" : ""}.`);
   const extrait = await telechargerExtrait(dossier, valeur("extrait"));
@@ -186,9 +203,11 @@ async function main() {
 
       const textes: { flux: Flux; texte: string }[] = [];
       for (const f of fluxDonnee) {
-        const extraits = parFlux.get(f.code) ?? [];
         const ancienTexte = donnee ? await api.lireFichier(slug, f.fichier, "geojson") : null;
-        const precedents = lireObjets(ancienTexte);
+        // Nettoyage : wilaya de chaque objet, objets hors d'Algérie écartés, des deux côtés (sinon les objets étrangers
+        // déjà publiés compteraient comme une baisse anormale).
+        const { objets: extraits, rapport: localisation } = localiserObjets(parFlux.get(f.code) ?? [], wilayas);
+        const { objets: precedents, rapport: localisationPrecedents } = localiserObjets(lireObjets(ancienTexte), wilayas);
         if (extraits.length === 0 && precedents.length === 0) {
           rapport.fichiers[f.fichier] = { extraits: 0, vide: true, change: false };
           continue;
@@ -198,11 +217,21 @@ async function main() {
           break;
         }
         const { objets, rapport: fusion } = fusionner(precedents, extraits, date);
+        const doublons = marquerDoublons(objets, f.fichier);
         const rapproches = geoalgeria ? rapprocher(objets, geoalgeria, f.rayon_m ?? RAYON_PAR_DEFAUT_M) : undefined;
         const texte = serialiser(objets);
         const ancienSha = donnee?.fichiers.find((fichier) => fichier.nom === f.fichier && fichier.format === "geojson")?.sha256 ?? (ancienTexte ? sha256(ancienTexte) : null);
         const change = sha256(texte) !== ancienSha;
-        rapport.fichiers[f.fichier] = { extraits: extraits.length, ...fusion, ...(rapproches !== undefined ? { geoalgeria: rapproches } : {}), change };
+        rapport.fichiers[f.fichier] = {
+          extraits: extraits.length,
+          ...fusion,
+          ...(rapproches !== undefined ? { geoalgeria: rapproches } : {}),
+          hors_algerie: localisation.hors_algerie,
+          retires_hors_algerie: localisationPrecedents.hors_algerie,
+          par_proximite: localisation.marge + localisation.cote,
+          doublons,
+          change,
+        };
         textes.push({ flux: f, texte });
       }
       if (rapport.anomalie || !textes.some(({ flux: f }) => rapport.fichiers[f.fichier].change)) continue;
@@ -216,7 +245,7 @@ async function main() {
       const notes = textes
         .map(({ flux: f }) => {
           const r = rapport.fichiers[f.fichier];
-          return `${f.fichier} : ${r.total} objets (+${r.ajoutes} ajoutés, ${r.mis_a_jour} mis à jour, ${r.absents} absents d'OSM)`;
+          return `${f.fichier} : ${r.total} objets (+${r.ajoutes} ajoutés, ${r.mis_a_jour} mis à jour, ${r.absents} absents d'OSM, ${r.doublons ?? 0} doublons probables, ${(r.hors_algerie ?? 0) + (r.retires_hors_algerie ?? 0)} hors d'Algérie écartés)`;
         })
         .join(" ; ");
       const version = await api.publierVersion(slug, {
@@ -247,7 +276,7 @@ async function main() {
   console.log(resumeComplet);
   for (const [slug, r] of Object.entries(donnees)) {
     const fichiers = Object.entries(r.fichiers)
-      .map(([nom, f]) => f.vide ? `${nom} : aucun objet` : `${nom} ${f.total ?? 0} (+${f.ajoutes ?? 0}/~${f.mis_a_jour ?? 0}/-${f.absents ?? 0}${f.geoalgeria !== undefined ? `, ${f.geoalgeria} chez GeoAlgeria` : ""})${f.change ? " *" : ""}`)
+      .map(([nom, f]) => f.vide ? `${nom} : aucun objet` : `${nom} ${f.total ?? 0} (+${f.ajoutes ?? 0}/~${f.mis_a_jour ?? 0}/-${f.absents ?? 0}${f.geoalgeria !== undefined ? `, ${f.geoalgeria} chez GeoAlgeria` : ""}, ${f.doublons ?? 0} doublons, ${(f.hors_algerie ?? 0) + (f.retires_hors_algerie ?? 0)} hors DZ)${f.change ? " *" : ""}`)
       .join(", ");
     console.log(`  ${slug}${r.creee ? " [nouvelle]" : ""}${r.complement ? " [complément]" : ""} : ${fichiers}${r.version ? ` → ${r.version}` : ""}${r.anomalie ? ` ⚠ ${r.anomalie}` : ""}${r.erreur ? ` ✗ ${r.erreur}` : ""}`);
   }
@@ -255,7 +284,7 @@ async function main() {
     const lignes = Object.entries(donnees).map(
       ([slug, r]) =>
         `| ${slug} | ${Object.entries(r.fichiers)
-          .map(([nom, f]) => (f.vide ? `${nom} : aucun objet trouvé` : `${nom} : ${f.total ?? 0} (+${f.ajoutes ?? 0}, ~${f.mis_a_jour ?? 0}, −${f.absents ?? 0})`))
+          .map(([nom, f]) => (f.vide ? `${nom} : aucun objet trouvé` : `${nom} : ${f.total ?? 0} (+${f.ajoutes ?? 0}, ~${f.mis_a_jour ?? 0}, −${f.absents ?? 0}, ${f.doublons ?? 0} doublons, ${(f.hors_algerie ?? 0) + (f.retires_hors_algerie ?? 0)} hors DZ)`))
           .join("<br>")} | ${r.publiee ? `✅ ${r.version}` : r.erreur ? `❌ ${r.erreur}` : r.anomalie ? `⚠️ ${r.anomalie}` : "—"} |`
     );
     await appendFile(process.env.GITHUB_STEP_SUMMARY, `## Synchro OpenStreetMap\n\n${resumeComplet}\n\n${

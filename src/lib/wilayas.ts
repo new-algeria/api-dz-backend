@@ -39,7 +39,8 @@ const TAILLE_MAX_LECTURE = 40 * 1024 * 1024;
 const PARALLELE = 4;
 const BUDGET_MS = 45_000;
 /** Version du format des décomptes rangés dans R2 : la changer force un recalcul. */
-const VERSION_DECOMPTE = "v1";
+// v2 : doublons probables et lieux disparus d'OpenStreetMap ne sont plus comptés.
+const VERSION_DECOMPTE = "v2";
 
 // ---------------------------------------------------------------- Fonctions pures (testées)
 
@@ -176,6 +177,8 @@ export function compterParWilaya(table: Table, contours: ContourWilaya[]): Decom
   let lieux = 0;
   let sansWilaya = 0;
   table.lignes.forEach((ligne, indice) => {
+    // Synchro OpenStreetMap : un doublon probable ou un lieu disparu d'OSM ne compte pas.
+    if (ligne?.doublon_probable || ligne?.osm_absent_depuis) return;
     const position = positionDe(ligne ?? {}, table.geometries?.[indice]);
     const codeFichier = colonneCode ? codeWilaya(ligne?.[colonneCode]) : null;
     if (!position && (serie || !codeFichier)) return;
