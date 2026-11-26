@@ -57,6 +57,16 @@ describe("chiffres par wilaya", () => {
     expect(parContours).toEqual({ comptes: { "01": 1, "02": 1 }, sans_wilaya: 1 });
   });
 
+  it("ne compte ni les doublons probables ni les lieux disparus d'OpenStreetMap", () => {
+    const lignes = [
+      { code_wilaya: "01", lat: 0.5, lng: 0.5 },
+      { code_wilaya: "01", lat: 0.5, lng: 0.5, doublon_probable: "way/1" },
+      { code_wilaya: "02", lat: 0.5, lng: 1.5, osm_absent_depuis: "2026-11-01" },
+      { code_wilaya: "02", lat: 0.5, lng: 1.2 },
+    ];
+    expect(compterParWilaya({ lignes, geometries: null }, contours)).toEqual({ comptes: { "01": 1, "02": 1 }, sans_wilaya: 0 });
+  });
+
   it("compte par code les lieux sans coordonnées d'un inventaire", () => {
     const lignes = [{ wilaya_code: "01", lat: null, lng: null }, { wilaya_code: "01", lat: null, lng: null }, { wilaya_code: "02", lat: null, lng: null }];
     expect(compterParWilaya({ lignes, geometries: null }, contours)).toEqual({ comptes: { "01": 2, "02": 1 }, sans_wilaya: 0 });
