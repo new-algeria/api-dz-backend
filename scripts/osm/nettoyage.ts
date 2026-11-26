@@ -263,3 +263,138 @@ export function marquerDoublons(objets: Objet[], fichier: string): number {
   }
   return marques;
 }
+
+// ---------------------------------------------------------------- Harmonisation et qualité
+//
+// Champs calculés à partir des étiquettes OSM, qui restent toujours à côté, telles quelles :
+//   nom_affiche          : `name` mis en forme, seulement s'il est tout en majuscules ou tout en minuscules (lettres latines) ;
+//   telephone_normalise  : numéros de `phone`, `contact:phone`, `mobile`, `contact:mobile` au format +213…, séparés par « ; » ;
+//   qualite              : 0 à 3, un point pour un nom, une adresse (`addr:*`), un contact (téléphone valide, email ou site).
+// Mesuré sur les fichiers publiés (novembre 2026) : 3 430 noms en majuscules et 874 en minuscules, 3 100 numéros dans une
+// dizaine de formats, qualité 0 : 20 012 objets, 1 : 24 922, 2 : 14 434, 3 : 2 220.
+
+/** Sigles gardés en majuscules dans un nom remis en forme. */
+const SIGLES = new Set(
+  (
+    "BNA BEA BADR CPA CNEP BDL CCP ATM GAB AGB SGA BNP CNMA SAA CAAT CAAR " +
+    "EPH EPSP EHS CHU CHR CHUO CRA PMI SAMU CNAS CASNOS CNR CACOBATPH CNAC ANEM ANSEJ ANGEM ANADE " +
+    "APC APW CEM CFPA INSFP ENS ENSP USTHB USTO UMBB INH ITE " +
+    "SARL EURL SPA SNC PTT ADE ONA DGSN GN RN CW OPGI AADL CNL ENIE ENAFOR SNTF ETUSA SNVI ENTP ENIEM GIE"
+  ).split(" ")
+);
+/** Petits mots en minuscules (sauf en tête de nom). */
+const PETITS_MOTS = new Set(["de", "du", "des", "la", "le", "les", "et", "à", "au", "aux", "en", "sur", "pour", "par", "of", "the", "and"]);
+const ROMAIN = /^(?=[IVXLC]+$)M*(C[MD]|D?C{0,3})(X[CL]|L?X{0,3})(I[XV]|V?I{0,3})$/;
+
+/**
+ * Nom mis en forme : seulement si ses lettres latines sont toutes en majuscules ou toutes en minuscules (« PHARMACIE
+ * BENALI » → « Pharmacie Benali », « pharmacie el amel » → « Pharmacie El Amel »). Sigles, chiffres romains et initiales
+ * restent en majuscules ; un nom à casse mixte ou en arabe n'est pas touché (seulement les espaces en trop).
+ */
+export function nomAffiche(nom: string): string {
+  const propre = nom.replace(/\s+/g, " ").trim();
+  const latin = propre.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ]/g, "");
+  const toutMajuscule = latin.length >= 2 && latin === latin.toUpperCase();
+  const toutMinuscule = latin.length >= 2 && latin === latin.toLowerCase();
+  if (!toutMajuscule && !toutMinuscule) return propre;
+  let premier = true;
+  return propre.replace(/[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'’.-]*/g, (mot) => {
+    const enTete = premier;
+    premier = false;
+    const majuscule = mot.toUpperCase().replace(/[.’']+$/, "");
+    if (toutMajuscule && (SIGLES.has(majuscule) || ROMAIN.test(majuscule) || /^([A-Z]\.)+[A-Z]?\.?$/.test(mot) || mot.length === 1)) return mot;
+    // d'Alger, l'Hôpital, Aït-Ali : chaque morceau garde sa majuscule.
+    return mot
+      .toLowerCase()
+      .split(/([-'’])/)
+      .map((morceau, indice, morceaux) => {
+        if (/^[-'’]$/.test(morceau) || morceau === "") return morceau;
+        const apresApostrophe = indice > 0 && /['’]/.test(morceaux[indice - 1]);
+        if (!enTete && indice === 0 && morceaux.length > 1 && /['’]/.test(morceaux[1]) && ["d", "l"].includes(morceau)) return morceau; // d', l'
+        if (!enTete && indice === 0 && PETITS_MOTS.has(morceau)) return morceau;
+        if (!apresApostrophe && indice > 0 && morceaux[indice - 1] === "-") return morceau.charAt(0).toUpperCase() + morceau.slice(1);
+        return morceau.charAt(0).toUpperCase() + morceau.slice(1);
+      })
+      .join("");
+  });
+}
+
+/**
+ * Un numéro au format +213… : mobile (9 chiffres commençant par 5, 6 ou 7), fixe (8 chiffres commençant par 2, 3 ou 4)
+ * ou VoIP (9 chiffres commençant par 9). Les numéros courts (2 à 4 chiffres commençant par 1 : 14, 15, 17, 1055, 1548…,
+ * souvent saisis « +213 17 ») restent tels quels : ils se composent sans indicatif. `null` sinon.
+ */
+export function numeroAlgerien(brut: string): string | null {
+  let chiffres = brut.replace(/\(0\)/g, "").replace(/[^\d+]/g, "");
+  const court = chiffres.replace(/^(\+|00)?213/, "");
+  if (/^1\d{1,3}$/.test(court)) return court;
+  if (chiffres.startsWith("+")) chiffres = chiffres.slice(1);
+  else if (chiffres.startsWith("00")) chiffres = chiffres.slice(2);
+  else if (chiffres.startsWith("0")) chiffres = `213${chiffres.slice(1)}`;
+  // Numéro national saisi sans le 0 (« 550 23 10 73 », « 21 50 00 26 ») : longueur et préfixe suffisent à le reconnaître.
+  else if (/^([567]\d{8}|[234]\d{7})$/.test(chiffres)) chiffres = `213${chiffres}`;
+  if (!chiffres.startsWith("213")) return null;
+  const national = chiffres.slice(3).replace(/^0/, "");
+  if (/^[567]\d{8}$/.test(national) || /^[234]\d{7}$/.test(national) || /^9\d{8}$/.test(national)) return `+213${national}`;
+  return null;
+}
+
+/**
+ * Tous les numéros valides d'un champ, sans doublon. Séparateurs : « ; », « , », « / », « . » ou « - » entourés d'espaces,
+ * « Fax », « Tél », et l'espace avant un « + » ou un « 00213 » (deux numéros internationaux à la suite).
+ */
+export function numerosAlgeriens(valeur: string): string[] {
+  const numeros = valeur
+    .split(/[;,/]|\.\s+|\s+[-–]+\s+|\s*--\s*|fax|t[ée]l\.?|\s+(?=\+|00213)/i)
+    .map((morceau) => numeroAlgerien(morceau))
+    .filter((numero): numero is string => numero !== null);
+  return [...new Set(numeros)];
+}
+
+const CLES_TELEPHONE = ["phone", "contact:phone", "mobile", "contact:mobile"];
+// Le téléphone ne compte que s'il est valide (`telephone_normalise`) : « 69 » n'est pas un contact.
+const CLES_CONTACT = ["telephone_normalise", "email", "contact:email", "website", "contact:website", "url", "contact:facebook"];
+const PROPRIETES_CALCULEES = ["nom_affiche", "telephone_normalise", "qualite"] as const;
+
+/** Note de 0 à 3 : un nom, une adresse (`addr:*`), un contact (téléphone valide, email, site). */
+export function qualite(proprietes: Record<string, unknown>): number {
+  const rempli = (cle: string) => typeof proprietes[cle] === "string" && (proprietes[cle] as string).trim() !== "";
+  const nom = ["name", "name:fr", "name:ar"].some(rempli);
+  const adresse = Object.keys(proprietes).some((cle) => cle.startsWith("addr:") && rempli(cle));
+  const contact = CLES_CONTACT.some(rempli);
+  return Number(nom) + Number(adresse) + Number(contact);
+}
+
+export interface RapportHarmonisation {
+  noms_mis_en_forme: number;
+  telephones_normalises: number;
+  telephones_invalides: number;
+  qualite: Record<"0" | "1" | "2" | "3", number>;
+}
+
+/** Recalcule `nom_affiche`, `telephone_normalise` et `qualite` sur chaque objet (les étiquettes OSM ne changent pas). */
+export function harmoniserObjets(objets: Objet[]): { objets: Objet[]; rapport: RapportHarmonisation } {
+  const rapport: RapportHarmonisation = { noms_mis_en_forme: 0, telephones_normalises: 0, telephones_invalides: 0, qualite: { "0": 0, "1": 0, "2": 0, "3": 0 } };
+  const resultat = objets.map((objet) => {
+    const proprietes: Record<string, unknown> = { ...objet.properties };
+    for (const cle of PROPRIETES_CALCULEES) delete proprietes[cle];
+    if (typeof proprietes.name === "string" && proprietes.name.trim()) {
+      const affiche = nomAffiche(proprietes.name);
+      proprietes.nom_affiche = affiche;
+      if (affiche !== proprietes.name.replace(/\s+/g, " ").trim()) rapport.noms_mis_en_forme++;
+    }
+    const bruts = CLES_TELEPHONE.map((cle) => proprietes[cle]).filter((v): v is string => typeof v === "string" && v.trim() !== "");
+    if (bruts.length > 0) {
+      const numeros = [...new Set(bruts.flatMap(numerosAlgeriens))];
+      if (numeros.length > 0) {
+        proprietes.telephone_normalise = numeros.join("; ");
+        rapport.telephones_normalises++;
+      } else rapport.telephones_invalides++;
+    }
+    const note = qualite(proprietes);
+    proprietes.qualite = note;
+    rapport.qualite[String(note) as "0" | "1" | "2" | "3"]++;
+    return { ...objet, properties: trierProprietes(proprietes) };
+  });
+  return { objets: resultat, rapport };
+}
