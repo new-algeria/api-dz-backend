@@ -14,7 +14,7 @@ import { ClientApi, ErreurAppel, type DonneeApi, type TagCompte } from "./api.js
 import { FLUX, NOUVELLES_DONNEES, type Flux } from "./categories.js";
 import { CLES_INVENTAIRE, dateExtrait, extraireFlux, inventaireTags, telechargerExtrait } from "./extraire.js";
 import { baisseAnormale, fusionner, numeroComplement, rapprocher, serialiser, type Objet, type RapportFusion } from "./fusion.js";
-import { localiserObjets, marquerDoublons, preparerWilayas } from "./nettoyage.js";
+import { harmoniserObjets, localiserObjets, marquerDoublons, preparerWilayas, type RapportHarmonisation } from "./nettoyage.js";
 
 const CODE = "openstreetmap";
 const SOURCE = "openstreetmap";
@@ -44,6 +44,8 @@ interface RapportFichier extends Partial<RapportFusion> {
   par_proximite?: number;
   /** Objets marqués `doublon_probable`. */
   doublons?: number;
+  /** Noms remis en forme, téléphones normalisés et répartition de la note de qualité (objets extraits). */
+  harmonisation?: RapportHarmonisation;
   change: boolean;
 }
 
@@ -206,8 +208,12 @@ async function main() {
         const ancienTexte = donnee ? await api.lireFichier(slug, f.fichier, "geojson") : null;
         // Nettoyage : wilaya de chaque objet, objets hors d'Algérie écartés, des deux côtés (sinon les objets étrangers
         // déjà publiés compteraient comme une baisse anormale).
-        const { objets: extraits, rapport: localisation } = localiserObjets(parFlux.get(f.code) ?? [], wilayas);
-        const { objets: precedents, rapport: localisationPrecedents } = localiserObjets(lireObjets(ancienTexte), wilayas);
+        const localises = localiserObjets(parFlux.get(f.code) ?? [], wilayas);
+        const { objets: precedentsLocalises, rapport: localisationPrecedents } = localiserObjets(lireObjets(ancienTexte), wilayas);
+        const localisation = localises.rapport;
+        // Harmonisation (nom_affiche, telephone_normalise, qualite), recalculée des deux côtés : un objet inchangé reste identique.
+        const { objets: extraits, rapport: harmonisation } = harmoniserObjets(localises.objets);
+        const { objets: precedents } = harmoniserObjets(precedentsLocalises);
         if (extraits.length === 0 && precedents.length === 0) {
           rapport.fichiers[f.fichier] = { extraits: 0, vide: true, change: false };
           continue;
@@ -230,6 +236,7 @@ async function main() {
           retires_hors_algerie: localisationPrecedents.hors_algerie,
           par_proximite: localisation.marge + localisation.cote,
           doublons,
+          harmonisation,
           change,
         };
         textes.push({ flux: f, texte });
@@ -245,7 +252,7 @@ async function main() {
       const notes = textes
         .map(({ flux: f }) => {
           const r = rapport.fichiers[f.fichier];
-          return `${f.fichier} : ${r.total} objets (+${r.ajoutes} ajoutés, ${r.mis_a_jour} mis à jour, ${r.absents} absents d'OSM, ${r.doublons ?? 0} doublons probables, ${(r.hors_algerie ?? 0) + (r.retires_hors_algerie ?? 0)} hors d'Algérie écartés)`;
+          return `${f.fichier} : ${r.total} objets (+${r.ajoutes} ajoutés, ${r.mis_a_jour} mis à jour, ${r.absents} absents d'OSM, ${r.doublons ?? 0} doublons probables, ${(r.hors_algerie ?? 0) + (r.retires_hors_algerie ?? 0)} hors d'Algérie écartés, ${r.harmonisation?.qualite["3"] ?? 0} fiches complètes)`;
         })
         .join(" ; ");
       const version = await api.publierVersion(slug, {

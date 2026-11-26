@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Objet } from "../scripts/osm/fusion.js";
-import { localiser, localiserObjets, marquerDoublons, nomComparable, preparerWilayas, surLaCote } from "../scripts/osm/nettoyage.js";
+import { harmoniserObjets, localiser, localiserObjets, marquerDoublons, nomAffiche, nomComparable, numeroAlgerien, numerosAlgeriens, preparerWilayas, qualite, surLaCote } from "../scripts/osm/nettoyage.js";
 
 /** 69 wilayas fictives : la 16 « Alger » couvre [2.9, 3.4] × [36.5, 36.8] (côte au nord), la 46 « Aïn Témouchent »
  * [-1.5, -1.0] × [35.0, 35.4], la 12 « Tébessa » [7.6, 8.3] × [35.0, 35.6] (frontière tunisienne à l'est) ;
@@ -109,5 +109,59 @@ describe("doublons", () => {
     ];
     expect(marquerDoublons(objets, "town_halls")).toBe(2);
     expect(objets.map((o) => o.properties.doublon_probable)).toEqual([undefined, "node/1", "node/1"]);
+  });
+});
+
+describe("harmonisation", () => {
+  it("nom affiché : seulement les noms tout en majuscules ou tout en minuscules", () => {
+    expect(nomAffiche("PHARMACIE BENALI")).toBe("Pharmacie Benali");
+    expect(nomAffiche("pharmacie el amel")).toBe("Pharmacie El Amel");
+    expect(nomAffiche("BNA AGENCE D'ALGER")).toBe("BNA Agence d'Alger");
+    expect(nomAffiche("CEM IBN KHALDOUN II")).toBe("CEM Ibn Khaldoun II");
+    expect(nomAffiche("EPH DE TIZI-OUZOU")).toBe("EPH de Tizi-Ouzou");
+    expect(nomAffiche("REZKI M.A")).toBe("Rezki M.A");
+    expect(nomAffiche("  MAIRIE   DE  LA  CASBAH ")).toBe("Mairie de la Casbah");
+    // Casse mixte et arabe : inchangés (espaces en trop retirés).
+    expect(nomAffiche("Pharmacie FEITAS")).toBe("Pharmacie FEITAS");
+    expect(nomAffiche("صيدلية  عقيبة")).toBe("صيدلية عقيبة");
+  });
+
+  it("téléphones au format +213 : mobile, fixe, VoIP ; numéros impossibles écartés", () => {
+    expect(numeroAlgerien("0561 81 30 55")).toBe("+213561813055");
+    expect(numeroAlgerien("027713293")).toBe("+21327713293");
+    expect(numeroAlgerien("213 (0) 29 88 70 09")).toBe("+21329887009");
+    expect(numeroAlgerien("00213033396395")).toBe("+21333396395");
+    expect(numeroAlgerien("0982 40 12 34")).toBe("+213982401234");
+    for (const faux of ["69", "35.29", "02562186266", "+33 1 23 45 67 89"]) expect(numeroAlgerien(faux)).toBeNull();
+    expect(numerosAlgeriens("213550 231 073. 213771 216 105. 0550231073")).toEqual(["+213550231073", "+213771216105"]);
+    // Numéros courts (police 17, gendarmerie 1055…) : gardés sans indicatif.
+    expect(numeroAlgerien("+213 17")).toBe("17");
+    expect(numeroAlgerien("1055")).toBe("1055");
+    expect(numeroAlgerien("550 23 10 73")).toBe("+213550231073");
+    expect(numeroAlgerien("0661 00 12 34")).toBe("+213661001234");
+    expect(numeroAlgerien("+213 2121")).toBeNull();
+    expect(numerosAlgeriens("0550 23 10 73 - 0661 23 45 67")).toEqual(["+213550231073", "+213661234567"]);
+    expect(numerosAlgeriens("+213 (0) 21 50 00 26 Fax +213 (0) 21 50 00 27")).toEqual(["+21321500026", "+21321500027"]);
+    expect(numerosAlgeriens("+213550231073 +21321500026")).toEqual(["+213550231073", "+21321500026"]);
+  });
+
+  it("qualité : un point pour le nom, l'adresse et le contact", () => {
+    expect(qualite({})).toBe(0);
+    expect(qualite({ name: "Poste" })).toBe(1);
+    expect(qualite({ name: "Poste", "addr:street": "Rue A", website: "https://x.dz" })).toBe(3);
+    expect(qualite({ "name:ar": "بريد", telephone_normalise: "+21321000000" })).toBe(2);
+    expect(qualite({ name: "Poste", phone: "69" })).toBe(1); // numéro impossible : pas un contact
+  });
+
+  it("recalcule les champs sans toucher aux étiquettes OSM, de façon stable", () => {
+    const depart = [
+      objet("node/1", 3, 36.6, { name: "PHARMACIE BENALI", phone: "0561 81 30 55 ; 69", nom_affiche: "ancien" }),
+      objet("node/2", 3, 36.6, { phone: "69" }),
+    ];
+    const { objets, rapport } = harmoniserObjets(depart);
+    expect(objets[0].properties).toMatchObject({ name: "PHARMACIE BENALI", phone: "0561 81 30 55 ; 69", nom_affiche: "Pharmacie Benali", telephone_normalise: "+213561813055", qualite: 2 });
+    expect(objets[1].properties.telephone_normalise).toBeUndefined();
+    expect(rapport).toEqual({ noms_mis_en_forme: 1, telephones_normalises: 1, telephones_invalides: 1, qualite: { "0": 1, "1": 0, "2": 1, "3": 0 } });
+    expect(harmoniserObjets(objets).objets).toEqual(objets);
   });
 });
